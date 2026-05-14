@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Transcoder</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0d0d1a;color:#dde;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+    header{display:flex;justify-content:space-between;align-items:center;
+           padding:.9rem 1.5rem;background:#12122a;border-bottom:1px solid #252550}
+    .logo{font-size:1rem;font-weight:700;color:#8ab4f8}
+    .status-line{font-size:.8rem;color:#888;margin-left:.8rem}
+    .btn{padding:.45rem 1rem;border:none;border-radius:.4rem;cursor:pointer;font-weight:600;font-size:.8rem}
+    .btn-run{background:#2e7d51;color:#fff;margin-left:.5rem}
+    .btn-stop{background:#7d2e2e;color:#fff;margin-left:.5rem}
+    main{padding:1.4rem;max-width:1400px;margin:0 auto}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.4rem}
+    .card{background:#12122a;border-radius:.6rem;padding:1.1rem 1.3rem}
+    .card-val{font-size:1.8rem;font-weight:700;color:#8ab4f8}
+    .card-lbl{font-size:.75rem;color:#666;margin-top:.3rem;text-transform:uppercase}
+    .progress-box{background:#12122a;border-radius:.6rem;padding:1.1rem 1.3rem;margin-bottom:1.4rem}
+    .bar-wrap{background:#0d0d1a;border-radius:9999px;height:7px;overflow:hidden}
+    .bar-fill{height:100%;background:linear-gradient(90deg,#2e7d51,#4caf7a);border-radius:9999px;transition:width .4s}
+    .grid2{display:grid;grid-template-columns:260px 1fr;gap:1.4rem}
+    .panel{background:#12122a;border-radius:.6rem;padding:1.1rem 1.3rem}
+    .panel-title{font-size:.75rem;color:#666;text-transform:uppercase;margin-bottom:.9rem;padding-bottom:.6rem;border-bottom:1px solid #1e1e3a}
+    .codec-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid #1a1a30;font-size:.82rem}
+    .codec-row:last-child{border:none}
+    .codec-bar-wrap{flex:1;margin:0 .8rem;height:3px;background:#1a1a30;border-radius:2px;overflow:hidden}
+    .codec-bar-fill{height:100%;background:#8ab4f8;border-radius:2px}
+    .tbl-wrap{overflow-x:auto;max-height:520px;overflow-y:auto}
+    table{width:100%;border-collapse:collapse;font-size:.78rem}
+    th{text-align:left;padding:.5rem .6rem;color:#666;border-bottom:1px solid #1e1e3a;position:sticky;top:0;background:#12122a}
+    td{padding:.4rem .6rem;border-bottom:1px solid #181830;white-space:nowrap}
+    .badge{display:inline-block;padding:.12rem .45rem;border-radius:9999px;font-size:.7rem;font-weight:700}
+    .badge-done{background:#1a3d28;color:#4caf7a}
+    .badge-failed{background:#3d1a1a;color:#cf6679}
+    .badge-skipped{background:#1e1e30;color:#666}
+    .badge-running{background:#1a2e3d;color:#5ab4cf}
+    .dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:middle;margin-right:.4rem}
+    .dot-on{background:#4caf7a;animation:pulse 1.4s infinite}
+    .dot-off{background:#444}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  </style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center">
+    <span class="dot {{ 'dot-on' if state.running else 'dot-off' }}"></span>
+    <span class="logo">Video Transcoder</span>
+    <span class="status-line">
+      {% if state.running %}Running — {{ state.current_file or '…' }}
+      {% else %}Idle · scheduled {{ '%02d:00'|format(schedule_hour) }}{% endif %}
+    </span>
+  </div>
+  <div>
+    <button class="btn btn-run"  onclick="apiPost('/api/run')">▶ Run Now</button>
+    <button class="btn btn-stop" onclick="apiPost('/api/stop')">■ Stop</button>
+  </div>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><div class="card-val">{{ stats.done or 0 }}</div><div class="card-lbl">Transcoded</div></div>
+    <div class="card"><div class="card-val">{{ stats.failed or 0 }}</div><div class="card-lbl">Failed</div></div>
+    <div class="card"><div class="card-val">{{ '%.1f'|format((stats.total_elapsed_s or 0)/3600) }}h</div><div class="card-lbl">GPU Time</div></div>
+    <div class="card">
+      {% set delta=((stats.total_dest_bytes or 0)-(stats.total_src_bytes or 0))/1073741824 %}
+      <div class="card-val">{{ '%+.1f'|format(delta) }} GB</div><div class="card-lbl">Space Delta</div>
+    </div>
+  </div>
+  {% if state.running %}
+  <div class="progress-box">
+    <div style="margin-bottom:.6rem;font-size:.9rem">
+      <strong>{{ state.current_file or '—' }}</strong>
+      <span style="color:#888;margin-left:.5rem">{{ state.current_codec or '' }} → hevc_nvenc CQ{{ cq }}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar" style="width:{{ '%.1f'|format(state.progress) }}%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:.75rem;color:#666;margin-top:.4rem">
+      <span id="pct">{{ '%.1f'|format(state.progress) }}%</span>
+      <span>{{ state.started_at or '' }}</span>
+    </div>
+  </div>
+  {% endif %}
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">Codec Conversions</div>
+      {% if codec_stats %}{% set mx=codec_stats[0].cnt %}
+        {% for row in codec_stats %}
+        <div class="codec-row">
+          <span>{{ row.src_codec }}→hevc</span>
+          <div class="codec-bar-wrap"><div class="codec-bar-fill" style="width:{{ (row.cnt/mx*100)|int }}%"></div></div>
+          <span style="color:#8ab4f8;font-weight:600;min-width:36px;text-align:right">{{ row.cnt }}</span>
+        </div>
+        {% endfor %}
+      {% else %}<div style="color:#444;font-size:.82rem">No transcodes yet</div>{% endif %}
+    </div>
+    <div class="panel">
+      <div class="panel-title">Recent Jobs</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Mount</th><th>Codec</th><th>Before</th><th>After</th><th>Time</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for job in recent %}
+            <tr title="{{ job.path }}">
+              <td>{{ job.filename[:45] }}{% if job.filename|length>45 %}…{% endif %}</td>
+              <td>{{ job.mount or '—' }}</td>
+              <td>{{ job.src_codec or '—' }}</td>
+              <td>{{ '%.0f'|format((job.src_size or 0)/1e6) }}MB</td>
+              <td>{% if job.dest_size %}{{ '%.0f'|format(job.dest_size/1e6) }}MB{% else %}—{% endif %}</td>
+              <td>{% if job.elapsed_s %}{{ '%.0f'|format(job.elapsed_s) }}s{% else %}—{% endif %}</td>
+              <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+            </tr>
+            {% else %}<tr><td colspan="7" style="color:#444">No jobs yet</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  async function apiPost(url){const r=await fetch(url,{method:'POST'});const d=await r.json();if(d.msg)alert(d.msg);location.reload()}
+  {% if state.running %}
+  setInterval(async()=>{try{const r=await fetch('/api/status');const d=await r.json();const p=(d.state.progress||0).toFixed(1);document.getElementById('bar').style.width=p+'%';document.getElementById('pct').textContent=p+'%'}catch(_){}},2000);
+  {% endif %}
+  setTimeout(()=>location.reload(),20000);
+</script>
+</body>
+</html>

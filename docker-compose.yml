@@ -1,0 +1,33 @@
+services:
+  video-transcoder:
+    image: ghcr.io/rebaunana/video-transcoder:latest
+    container_name: video-transcoder
+    restart: unless-stopped
+    ports:
+      - "8267:8267"
+    volumes:
+      - ./data:/data
+      - /mnt/nas/ddMovie:/media/ddMovie
+      # Add further mounts here:
+      # - /mnt/nas/jdownloader:/media/jdownloader
+      # - /mnt/nas/intensoP1:/media/intensoP1
+      # - /mnt/nas/intensoP2:/media/intensoP2
+      # - /mnt/nas/plexsource/Movies:/media/plexMovies
+      # - /mnt/nas/plexsource/Serien:/media/plexSerien
+    environment:
+      - TZ=Europe/Zurich
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - SCHEDULE_HOUR=3
+      - FFMPEG_CQ=19
+      - FFMPEG_PRESET=fast
+      - DRY_RUN=false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"

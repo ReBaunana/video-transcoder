@@ -1,0 +1,247 @@
+import json
+import logging
+import os
+import re
+import subprocess
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+MEDIA_ROOT = Path('/media')
+IDEAL_CODECS  = frozenset({'hevc', 'av1'})
+SKIP_CODECS   = frozenset({'gif', 'png', 'unknown', 'mjpeg'})
+CQ            = os.getenv('FFMPEG_CQ', '19')
+PRESET        = os.getenv('FFMPEG_PRESET', 'fast')
+DRY_RUN       = os.getenv('DRY_RUN', 'false').lower() == 'true'
+
+VIDEO_EXTENSIONS = frozenset({
+    '.mkv', '.mp4', '.avi', '.wmv', '.mov', '.flv',
+    '.m4v', '.ts', '.mpg', '.mpeg', '.divx', '.webm',
+})
+
+OUTPUT_EXT = {
+    '.mkv': '.mkv', '.mp4': '.mp4', '.m4v': '.mp4', '.mov': '.mp4',
+    '.avi': '.mkv', '.wmv': '.mkv', '.flv': '.mkv', '.ts': '.mkv',
+    '.mpg': '.mkv', '.mpeg': '.mkv', '.divx': '.mkv', '.webm': '.mkv',
+}
+
+# ── Shared state (read by web UI) ─────────────────────────────────────────────
+
+state: dict = {
+    'running':       False,
+    'current_file':  None,
+    'current_codec': None,
+    'progress':      0.0,
+    'started_at':    None,
+    'session':       {'done': 0, 'failed': 0, 'skipped': 0},
+}
+_stop = threading.Event()
+_lock = threading.Lock()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def probe(path: Path) -> dict | None:
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-print_format', 'json',
+             '-show_streams', '-show_format', str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            return None
+        data = json.loads(r.stdout)
+        video = next(
+            (s for s in data.get('streams', []) if s.get('codec_type') == 'video'),
+            None,
+        )
+        if not video:
+            return None
+        return {
+            'codec':    video.get('codec_name', '').lower(),
+            'duration': float(data.get('format', {}).get('duration', 0)),
+        }
+    except Exception:
+        return None
+
+
+def _parse_time(s: str) -> float:
+    try:
+        h, m, sec = s.split(':')
+        return int(h) * 3600 + int(m) * 60 + float(sec)
+    except Exception:
+        return 0.0
+
+
+def _run_ffmpeg(cmd: list, duration: float) -> int:
+    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
+    time_re = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
+    for line in proc.stderr:
+        if _stop.is_set():
+            proc.terminate()
+            proc.wait()
+            return -1
+        m = time_re.search(line)
+        if m and duration > 0:
+            with _lock:
+                state['progress'] = min(_parse_time(m.group(1)) / duration * 100, 99.9)
+    proc.wait()
+    return proc.returncode
+
+
+def cleanup_leftover_temps():
+    if not MEDIA_ROOT.exists():
+        return
+    for root, _, files in os.walk(MEDIA_ROOT):
+        for f in files:
+            if '.transcoding.' in f:
+                p = Path(root) / f
+                log.warning(f'Removing leftover temp: {p}')
+                p.unlink(missing_ok=True)
+
+
+# ── Core transcoding ──────────────────────────────────────────────────────────
+
+def transcode_file(path: Path, db) -> str:
+    from app.database import record_start, record_finish
+
+    info = probe(path)
+    if not info:
+        log.warning(f'probe failed: {path}')
+        return 'failed'
+
+    codec = info['codec']
+
+    if codec in IDEAL_CODECS or codec in SKIP_CODECS:
+        return 'skipped'
+
+    out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
+    tmp      = path.with_name(path.stem + '.transcoding' + out_ext)
+    dest     = path.with_suffix(out_ext)
+    mount    = path.parts[2] if len(path.parts) > 2 else ''
+    src_size = path.stat().st_size
+
+    log.info(f'TRANSCODE  {path.name}  [{codec}→hevc_nvenc CQ{CQ}]  {src_size / 1e6:.0f}MB')
+
+    if DRY_RUN:
+        log.info('  DRY_RUN – skip')
+        return 'skipped'
+
+    job_id  = record_start(db, str(path), path.name, codec, src_size, mount)
+    started = datetime.now(timezone.utc)
+
+    with _lock:
+        state.update({
+            'current_file':  path.name,
+            'current_codec': codec,
+            'progress':      0.0,
+            'started_at':    started.isoformat(),
+        })
+
+    cmd = [
+        'ffmpeg', '-y', '-i', str(path),
+        '-c:v', 'hevc_nvenc', '-cq', CQ, '-preset', PRESET,
+        '-c:a', 'copy', '-c:s', 'copy',
+    ]
+    if out_ext == '.mp4':
+        cmd += ['-movflags', '+faststart']
+    cmd.append(str(tmp))
+
+    rc      = _run_ffmpeg(cmd, info['duration'])
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+
+    if rc != 0 or not tmp.exists():
+        log.error(f'  ffmpeg failed (rc={rc})')
+        tmp.unlink(missing_ok=True)
+        record_finish(db, job_id, 'failed', None, elapsed, f'ffmpeg exit {rc}')
+        return 'failed'
+
+    out_info = probe(tmp)
+    if not out_info or out_info['codec'] != 'hevc':
+        log.error(f'  verify failed: codec={out_info and out_info["codec"]}')
+        tmp.unlink(missing_ok=True)
+        record_finish(db, job_id, 'failed', None, elapsed, 'codec verification failed')
+        return 'failed'
+
+    if info['duration'] > 0:
+        drift = abs(out_info['duration'] - info['duration']) / info['duration']
+        if drift > 0.02:
+            log.error(f'  duration drift {drift:.1%}')
+            tmp.unlink(missing_ok=True)
+            record_finish(db, job_id, 'failed', None, elapsed, f'duration drift {drift:.1%}')
+            return 'failed'
+
+    dest_size = tmp.stat().st_size
+    log.info(
+        f'  {src_size / 1e6:.0f}MB → {dest_size / 1e6:.0f}MB'
+        f'  ({dest_size / src_size * 100:.0f}%)  {elapsed:.0f}s'
+    )
+
+    if dest != path:
+        path.unlink()
+    tmp.replace(dest)
+
+    record_finish(db, job_id, 'done', dest_size, elapsed)
+    with _lock:
+        state['progress'] = 100.0
+    log.info(f'  OK  {dest.name}')
+    return 'done'
+
+
+# ── Scan loop ─────────────────────────────────────────────────────────────────
+
+def run_scan(db):
+    if state['running']:
+        log.warning('Scan already running')
+        return
+
+    _stop.clear()
+    with _lock:
+        state['running'] = True
+        state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
+
+    log.info('=== Scan started ===')
+    try:
+        if not MEDIA_ROOT.exists():
+            log.error(f'{MEDIA_ROOT} not found — check volume mounts')
+            return
+
+        mounts = sorted(p for p in MEDIA_ROOT.iterdir() if p.is_dir())
+        log.info(f'Mounts: {[m.name for m in mounts]}')
+
+        for mount in mounts:
+            log.info(f'--- {mount.name} ---')
+            for root, dirs, files in os.walk(mount, topdown=True):
+                dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+                if _stop.is_set():
+                    log.info('Stopped by request')
+                    return
+                for name in sorted(files):
+                    if _stop.is_set():
+                        return
+                    if '.transcoding.' in name:
+                        continue
+                    p = Path(root) / name
+                    if p.suffix.lower() not in VIDEO_EXTENSIONS:
+                        continue
+                    result = transcode_file(p, db)
+                    with _lock:
+                        state['session'][result] = state['session'].get(result, 0) + 1
+    finally:
+        with _lock:
+            state.update({
+                'running': False, 'current_file': None,
+                'current_codec': None, 'progress': 0.0,
+            })
+        log.info(f'=== Scan done: {state["session"]} ===')
+
+
+def start_scan(db):
+    t = threading.Thread(target=run_scan, args=(db,), daemon=True, name='transcoder')
+    t.start()
+
+
+def stop_scan():
+    _stop.set()
