@@ -57,8 +57,8 @@ def _start_scheduler():
         import time as _time
         log = logging.getLogger('scheduler')
 
-        # Seed last backup timestamp from most recent file so we don't
-        # immediately back up right after startup if one is recent enough.
+        # Seed from most recent backup file so we don't back up immediately
+        # if one is recent enough.
         last_backup_ts = 0.0
         if BACKUP_DIR.exists():
             backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
@@ -72,7 +72,7 @@ def _start_scheduler():
             interval_h = transcoder.BACKUP_INTERVAL_H
             if interval_h > 0 and (now_ts - last_backup_ts) >= interval_h * 3600:
                 try:
-                    path = db_backup(db)
+                    path = db_backup(db, keep=transcoder.BACKUP_KEEP)
                     last_backup_ts = now_ts
                     last_backup_at = now.strftime('%Y-%m-%d %H:%M')
                     log.info(f'Scheduled backup → {path.name}')
@@ -102,20 +102,21 @@ async def dashboard(request: Request):
     return templates.TemplateResponse(request, 'index.html',
         headers={"Cache-Control": "no-store"},
         context={
-        'state':         transcoder.state,
-        'stats':         get_stats(db),
-        'codec_stats':   get_codec_stats(db),
-        'recent':        get_recent_jobs(db, 50),
-        'mounts':        mounts,
-        'schedule_hour': SCHEDULE_HOUR,
-        'cq':            transcoder.CQ,
-        'preset':        transcoder.PRESET,
-        'dry_run':       transcoder.DRY_RUN,
-        'last_backup':        last_backup_at,
-        'version':            APP_VERSION,
-        'workers_count':      transcoder.WORKERS,
-        'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
-    })
+            'state':              transcoder.state,
+            'stats':              get_stats(db),
+            'codec_stats':        get_codec_stats(db),
+            'recent':             get_recent_jobs(db, 50),
+            'mounts':             mounts,
+            'schedule_hour':      SCHEDULE_HOUR,
+            'cq':                 transcoder.CQ,
+            'preset':             transcoder.PRESET,
+            'dry_run':            transcoder.DRY_RUN,
+            'last_backup':        last_backup_at,
+            'version':            APP_VERSION,
+            'workers_count':      transcoder.WORKERS,
+            'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
+            'backup_keep':        transcoder.BACKUP_KEEP,
+        })
 
 
 @app.get('/api/status')
@@ -159,11 +160,12 @@ _VALID_PRESETS = {
 @app.get('/api/config')
 async def api_get_config():
     return JSONResponse({
-        'cq':               transcoder.CQ,
-        'preset':           transcoder.PRESET,
-        'dry_run':          transcoder.DRY_RUN,
-        'workers':          transcoder.WORKERS,
+        'cq':                transcoder.CQ,
+        'preset':            transcoder.PRESET,
+        'dry_run':           transcoder.DRY_RUN,
+        'workers':           transcoder.WORKERS,
         'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
+        'backup_keep':       transcoder.BACKUP_KEEP,
     })
 
 
@@ -182,14 +184,17 @@ async def api_set_config(request: Request):
         transcoder.WORKERS = max(1, min(int(body['workers']), 8))
     if 'backup_interval_h' in body:
         transcoder.BACKUP_INTERVAL_H = max(0, int(body['backup_interval_h']))
+    if 'backup_keep' in body:
+        transcoder.BACKUP_KEEP = max(1, min(int(body['backup_keep']), 30))
     transcoder.save_settings()
     return JSONResponse({
-        'ok':               True,
-        'cq':               transcoder.CQ,
-        'preset':           transcoder.PRESET,
-        'dry_run':          transcoder.DRY_RUN,
-        'workers':          transcoder.WORKERS,
+        'ok':                True,
+        'cq':                transcoder.CQ,
+        'preset':            transcoder.PRESET,
+        'dry_run':           transcoder.DRY_RUN,
+        'workers':           transcoder.WORKERS,
         'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
+        'backup_keep':       transcoder.BACKUP_KEEP,
     })
 
 
@@ -215,7 +220,7 @@ async def api_clean_jobs():
 async def api_backup():
     global last_backup_at
     try:
-        path = db_backup(db)
+        path = db_backup(db, keep=transcoder.BACKUP_KEEP)
         last_backup_at = datetime.now().strftime('%Y-%m-%d %H:%M')
         return JSONResponse({'ok': True, 'path': str(path), 'at': last_backup_at})
     except Exception as e:

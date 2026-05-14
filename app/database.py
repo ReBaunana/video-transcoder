@@ -152,7 +152,7 @@ def clean_jobs(conn: sqlite3.Connection):
 
 BACKUP_DIR = Path('/data/backups')
 
-def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR) -> Path:
+def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR, keep: int = 7) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dest = backup_dir / f'transcoder_{ts}.db'
@@ -163,7 +163,6 @@ def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR) -> Path:
     finally:
         bconn.close()
     tmp.replace(dest)  # atomic — no partial file visible on disk-full
-    # Keep only last 7 daily backups
-    for old in sorted(backup_dir.glob('transcoder_*.db'))[:-7]:
+    for old in sorted(backup_dir.glob('transcoder_*.db'))[:-keep]:
         old.unlink(missing_ok=True)
     return dest

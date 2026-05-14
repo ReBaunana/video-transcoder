@@ -19,6 +19,7 @@ PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
 DRY_RUN            = os.getenv('DRY_RUN', 'false').lower() == 'true'
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
+BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
 
 VIDEO_EXTENSIONS = frozenset({
     '.mkv', '.mp4', '.avi', '.wmv', '.mov', '.flv',
@@ -46,7 +47,7 @@ _lock = threading.Lock()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H
+    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -61,9 +62,10 @@ def load_settings():
         DRY_RUN           = bool(data.get('dry_run', DRY_RUN))
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
+        BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
         log.info(
             f'Settings loaded: CQ={CQ} preset={PRESET} dry_run={DRY_RUN} '
-            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H}'
+            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H} backup_keep={BACKUP_KEEP}'
         )
     except FileNotFoundError:
         pass
@@ -78,6 +80,7 @@ def save_settings():
         tmp.write_text(json.dumps({
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
             'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
+            'backup_keep': BACKUP_KEEP,
         }))
         tmp.replace(SETTINGS_PATH)
     except Exception:
