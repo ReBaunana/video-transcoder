@@ -887,6 +887,56 @@
       box-shadow: 0 0 5px var(--red);
     }
 
+    /* CQ slider */
+    .cq-control { display: flex; align-items: center; gap: .6rem; width: 100%; }
+
+    .cq-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      min-width: 2.2ch;
+      letter-spacing: -.03em;
+      line-height: 1;
+      transition: color .15s;
+    }
+    .cq-good    { color: var(--green); }
+    .cq-caution { color: var(--yellow); }
+    .cq-danger  { color: var(--red); }
+
+    .cq-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 5px;
+      border-radius: 99px;
+      /*  15──22 danger · 22──25 caution · 25──28 good · 28──32 caution · 32──40 danger  */
+      background: linear-gradient(90deg,
+        #f87171 0%,  #f87171 28%,
+        #fbbf24 28%, #fbbf24 40%,
+        #34d399 40%, #34d399 52%,
+        #fbbf24 52%, #fbbf24 68%,
+        #f87171 68%
+      );
+      outline: none;
+      cursor: pointer;
+    }
+    .cq-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      background: var(--text);
+      border: 2px solid var(--bg);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,0,0,.5);
+    }
+    .cq-slider::-moz-range-thumb {
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      background: var(--text);
+      border: 2px solid var(--bg);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,0,0,.5);
+    }
+
     .btn-backup {
       background: rgba(108,142,245,.08);
       border-color: rgba(108,142,245,.2);
@@ -920,6 +970,55 @@
     .filter-pill.fp-active { background: var(--surface-3); border-color: var(--border-hover); color: var(--text); }
     .filter-pill.fp-done   { border-color: rgba(52,211,153,.25);  color: var(--green); background: var(--green-bg); }
     .filter-pill.fp-failed { border-color: rgba(248,113,113,.25); color: var(--red);   background: var(--red-bg);   }
+
+    /* ─── Tooltips ──────────────────────────────────── */
+    .has-tip { position: relative; }
+
+    .tip {
+      position: absolute;
+      z-index: 400;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface-3);
+      border: 1px solid var(--border-hover);
+      border-radius: var(--radius-sm);
+      padding: .6rem .85rem;
+      font-size: .72rem;
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.6;
+      width: max-content;
+      max-width: 250px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      text-align: left;
+      white-space: normal;
+    }
+    .tip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: var(--border-hover);
+    }
+    .has-tip:hover .tip { opacity: 1; }
+
+    /* tooltip appearing below the trigger (e.g. sticky header) */
+    .tip-below {
+      bottom: auto;
+      top: calc(100% + 8px);
+    }
+    .tip-below::after {
+      top: auto;
+      bottom: 100%;
+      border-top-color: transparent;
+      border-bottom-color: var(--border-hover);
+    }
   </style>
 </head>
 <body>
@@ -948,15 +1047,23 @@
   </div>
 
   <div class="header-actions">
-    <div class="workers-select">
+    <div class="workers-select has-tip">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/>
       </svg>
-      <select id="workersSelect" onchange="setWorkers(this.value)" title="Parallel workers">
+      <select id="workersSelect" onchange="setWorkers(this.value)">
         {% for n in [1,2,3,4,5,6,7,8] %}
         <option value="{{ n }}" {{ 'selected' if n == workers_count else '' }}>{{ n }}×</option>
         {% endfor %}
       </select>
+      <div class="tip tip-below" style="left:auto;right:0;transform:none;">
+        <strong style="color:var(--text)">Job parallelization</strong><br>
+        How many files encode simultaneously.<br>
+        All streams share the single NVENC unit.<br><br>
+        <span style="color:var(--green)">1–2×</span>&nbsp; most efficient per file<br>
+        <span style="color:var(--green)">3–4×</span>&nbsp; good I/O overlap &middot; recommended<br>
+        <span style="color:var(--text-muted)">5–8×</span>&nbsp; diminishing returns on RTX 3050 Ti
+      </div>
     </div>
     <button class="btn btn-run"  onclick="apiPost('/api/run')">
       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1073,20 +1180,46 @@
 
   <!-- ── Settings ─────────────────────────────────────────── -->
   <div class="settings-strip">
-    <div class="setting-card">
+    {% set _cq = cq | int %}
+    {% set _cq_cls = 'cq-danger' if _cq <= 22 else ('cq-caution' if _cq <= 25 else ('cq-good' if _cq <= 28 else ('cq-caution' if _cq <= 32 else 'cq-danger'))) %}
+    {% set _cq_hint = 'Near-lossless — file may be bigger than source!' if _cq <= 22 else ('High quality, good space savings' if _cq <= 25 else ('Recommended — balanced quality / size' if _cq <= 28 else ('Slight quality loss, more compression' if _cq <= 32 else 'Noticeable quality loss on film content'))) %}
+    <div class="setting-card has-tip" style="flex:2;min-width:200px;">
       <div class="setting-label">Quality (CQ)</div>
-      <input type="number" id="cfgCQ" value="{{ cq }}" min="1" max="51"
-             class="setting-input" onchange="saveConfig()">
-      <div class="setting-hint">Lower = better / larger</div>
+      <div class="cq-control">
+        <span class="cq-value {{ _cq_cls }}" id="cqDisplay">{{ cq }}</span>
+        <input type="range" id="cfgCQ" value="{{ cq }}" min="15" max="40"
+               class="cq-slider" oninput="updateCQ(this.value)" onchange="saveConfig()">
+      </div>
+      <div class="setting-hint" id="cqHint">{{ _cq_hint }}</div>
+      <div class="tip">
+        <strong style="color:var(--text)">Constant Quality (hevc_nvenc)</strong><br>
+        Lower = better quality, larger file.<br><br>
+        <span style="color:var(--red)">15–22</span>&nbsp;&nbsp;near-lossless &mdash; can be bigger than source!<br>
+        <span style="color:var(--yellow)">23–25</span>&nbsp;&nbsp;high quality, good space savings<br>
+        <span style="color:var(--green)">26–28</span>&nbsp;&nbsp;recommended &mdash; balanced<br>
+        <span style="color:var(--yellow)">29–32</span>&nbsp;&nbsp;slight quality loss, smaller files<br>
+        <span style="color:var(--red)">33+&nbsp;&nbsp;</span>&nbsp;&nbsp;noticeable quality loss
+      </div>
     </div>
-    <div class="setting-card">
+    <div class="setting-card has-tip">
       <div class="setting-label">Preset</div>
       <select id="cfgPreset" class="setting-select" onchange="saveConfig()">
         {% for p in ['ultrafast','superfast','veryfast','faster','fast','medium','slow'] %}
         <option value="{{ p }}" {{ 'selected' if p == preset else '' }}>{{ p }}</option>
         {% endfor %}
       </select>
-      <div class="setting-hint">Speed vs compression</div>
+      <div class="setting-hint">Encode speed &amp; compression</div>
+      <div class="tip">
+        <strong style="color:var(--text)">Encode preset (hevc_nvenc)</strong><br>
+        Controls how hard the encoder searches<br>
+        for the best result. Unlike software codecs,<br>
+        the quality difference is small — NVENC is<br>
+        fixed-function hardware.<br><br>
+        <span style="color:var(--text-muted)">ultrafast</span>&nbsp;&nbsp;fastest, files slightly larger<br>
+        <span style="color:var(--green)">fast</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;good balance &mdash; recommended<br>
+        <span style="color:var(--text-muted)">medium</span>&nbsp;&nbsp;&nbsp;5–10% smaller, 2× slower<br>
+        <span style="color:var(--text-muted)">slow</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;marginal gain, 3× slower
+      </div>
     </div>
     <div class="setting-card">
       <div class="setting-label">Dry Run</div>
@@ -1278,10 +1411,32 @@
       const r = await fetch('/api/reset', { method: 'POST' });
       const d = await r.json();
       if (!d.ok) { alert(d.msg || 'Reset failed'); return; }
-      location.reload();
+      window.location.href = '/?_=' + Date.now();
     } catch (e) {
       alert('Reset failed: ' + e.message);
     }
+  }
+
+  function updateCQ(val) {
+    const v = parseInt(val);
+    const display = document.getElementById('cqDisplay');
+    const hint    = document.getElementById('cqHint');
+    if (display) {
+      display.textContent = v;
+      display.className   = 'cq-value ' + (
+        v <= 22 ? 'cq-danger'  :
+        v <= 25 ? 'cq-caution' :
+        v <= 28 ? 'cq-good'    :
+        v <= 32 ? 'cq-caution' : 'cq-danger'
+      );
+    }
+    if (hint) hint.textContent = (
+      v <= 22 ? 'Near-lossless — file may be bigger than source!'  :
+      v <= 25 ? 'High quality, good space savings'                 :
+      v <= 28 ? 'Recommended — balanced quality / size'            :
+      v <= 32 ? 'Slight quality loss, more compression'            :
+               'Noticeable quality loss on film content'
+    );
   }
 
   async function saveConfig() {

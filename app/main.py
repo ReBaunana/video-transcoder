@@ -87,7 +87,9 @@ async def dashboard(request: Request):
         {**mount_stats.get(name, {'done': 0, 'failed': 0, 'src_bytes': 0, 'dest_bytes': 0}), 'name': name}
         for name in transcoder.get_mounts()
     ]
-    return templates.TemplateResponse(request, 'index.html', context={
+    return templates.TemplateResponse(request, 'index.html',
+        headers={"Cache-Control": "no-store"},
+        context={
         'state':         transcoder.state,
         'stats':         get_stats(db),
         'codec_stats':   get_codec_stats(db),
@@ -177,6 +179,7 @@ async def api_reset():
     if transcoder.state['running']:
         return JSONResponse({'ok': False, 'msg': 'Stop the scan before resetting'}, status_code=409)
     reset_db(db)
+    transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
     return JSONResponse({'ok': True})
 
 
