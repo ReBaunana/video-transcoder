@@ -93,8 +93,40 @@ def _start_scheduler():
 # ── Sysinfo helpers ───────────────────────────────────────────────────────────
 
 _cpu_prev: tuple | None = None
-_net_prev: tuple | None = None
+_net_prev: dict | None = None   # {iface: (rx_bytes, tx_bytes)}
 _net_prev_ts: float = 0.0
+
+# Override with NET_IFACE=eno1 (comma-separated) to pin specific interfaces.
+# Leave unset to auto-detect all physical-looking interfaces.
+_NET_IFACE_OVERRIDE: list[str] = [
+    i.strip() for i in os.getenv('NET_IFACE', '').split(',') if i.strip()
+]
+
+# Path to proc/net/dev — can be overridden via PROC_NET_DEV env var so that a
+# bind-mount of the host's /proc/net into /host/proc/net works without
+# network_mode: host.  Falls back to /proc/net/dev (correct when host network
+# is used, or for single-host installs without Docker).
+_PROC_NET_DEV = Path(os.getenv('PROC_NET_DEV', '/proc/net/dev'))
+
+
+def _is_physical_iface(name: str) -> bool:
+    """Return True for interfaces that look like real NICs.
+
+    Keeps: eno*, enp*, ens*, eth*, wlan*, wlp*, wls*, bond*, team*
+    Drops: lo, docker*, veth*, br-*, virbr*, tun*, tap*, macvlan*, dummy*,
+           tailscale*, flannel*, cali*, cilium*, ovs-*, vxlan*, sit*
+    """
+    if name == 'lo':
+        return False
+    _drop = ('docker', 'veth', 'br-', 'virbr', 'tun', 'tap',
+             'dummy', 'flannel', 'cali', 'cilium', 'ovs',
+             'vxlan', 'sit', 'gre', 'ipip', 'macvlan-',)
+    if any(name.startswith(p) for p in _drop):
+        return False
+    # tailscale / wireguard / zerotier look like "tailscale0", "wg0", "zt*"
+    if name.startswith(('tailscale', 'wg', 'zt')):
+        return False
+    return True
 
 
 def _read_cpu_pct() -> float:
@@ -146,31 +178,53 @@ def _read_gpu_pct() -> float:
 
 
 def _read_net_mbps() -> tuple[float, float]:
+    """Return (rx_mbps, tx_mbps) summed over all selected network interfaces.
+
+    Interface selection (in priority order):
+    1. NET_IFACE env var — comma-separated list of interface names to use.
+    2. Auto-detect physical interfaces from /proc/net/dev (or PROC_NET_DEV path).
+
+    First call always returns (0, 0) — that seeds the delta baseline.
+    """
     global _net_prev, _net_prev_ts
     try:
         now = time.monotonic()
-        rx = tx = 0
-        for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
+        samples: dict[str, tuple[int, int]] = {}
+
+        for line in _PROC_NET_DEV.read_text().splitlines()[2:]:
             p = line.split()
             if len(p) < 10:
                 continue
             iface = p[0].rstrip(':')
-            if iface == 'lo' or iface.startswith(('docker', 'veth', 'br-', 'virbr')):
-                continue
-            rx += int(p[1])
-            tx += int(p[9])
+            if _NET_IFACE_OVERRIDE:
+                if iface not in _NET_IFACE_OVERRIDE:
+                    continue
+            else:
+                if not _is_physical_iface(iface):
+                    continue
+            samples[iface] = (int(p[1]), int(p[9]))
+
         if _net_prev is None:
-            _net_prev = (rx, tx)
+            _net_prev = samples
             _net_prev_ts = now
             return 0.0, 0.0
+
         dt = now - _net_prev_ts
         if dt < 0.1:
+            # Called too quickly — return last known good values aren't stored,
+            # so just skip the update and return zero to avoid div-by-zero.
             return 0.0, 0.0
-        rx_mbps = max(0.0, (rx - _net_prev[0]) / dt / 1_000_000)
-        tx_mbps = max(0.0, (tx - _net_prev[1]) / dt / 1_000_000)
-        _net_prev = (rx, tx)
+
+        rx_delta = tx_delta = 0
+        for iface, (rx, tx) in samples.items():
+            prev_rx, prev_tx = _net_prev.get(iface, (rx, tx))
+            rx_delta += max(0, rx - prev_rx)
+            tx_delta += max(0, tx - prev_tx)
+
+        _net_prev = samples
         _net_prev_ts = now
-        return round(rx_mbps, 2), round(tx_mbps, 2)
+
+        return round(rx_delta / dt / 1_000_000, 2), round(tx_delta / dt / 1_000_000, 2)
     except Exception:
         return 0.0, 0.0
 
