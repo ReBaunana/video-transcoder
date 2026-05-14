@@ -136,7 +136,33 @@
       max-width: 280px;
     }
 
-    .header-actions { display: flex; gap: .45rem; flex-shrink: 0; }
+    .header-actions { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
+
+    .workers-select {
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .3rem .6rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: .72rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .workers-select select {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: .72rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .workers-select select option { background: #12122a; }
 
     .btn {
       display: inline-flex;
@@ -670,6 +696,83 @@
       animation: pulse-dot 1.6s ease-in-out infinite;
     }
 
+    /* ─── Workers grid ──────────────────────────── */
+    .workers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: .85rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .worker-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.3rem 1rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .worker-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(140deg, rgba(255,255,255,.025) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .worker-card.active {
+      border-color: rgba(108,142,245,.22);
+      box-shadow: 0 0 28px rgba(108,142,245,.06);
+    }
+    .worker-card.active::before {
+      background: linear-gradient(135deg, rgba(108,142,245,.05) 0%, transparent 50%);
+    }
+
+    .worker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+      margin-bottom: .65rem;
+    }
+
+    .worker-label {
+      font-size: .67rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .09em;
+    }
+    .worker-card.active .worker-label { color: var(--accent); }
+
+    .worker-file {
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: .7rem;
+      letter-spacing: -.01em;
+    }
+
+    .worker-idle-inner {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .5rem 0;
+    }
+    .worker-idle-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+    }
+    .worker-idle-txt {
+      font-size: .75rem;
+      color: var(--text-dim);
+    }
+
     /* ─── Responsive ─────────────────────────────── */
     @media (max-width: 960px) {
       .grid2 { grid-template-columns: 1fr; }
@@ -707,12 +810,23 @@
       {% if state.running %}Running{% else %}Idle &nbsp;·&nbsp; next {{ '%02d:00'|format(schedule_hour) }}{% endif %}
     </div>
 
-    {% if state.running and state.current_file %}
-    <span class="header-file">{{ state.current_file }}</span>
+    {% set active_workers = state.workers.values() | select | list | length %}
+    {% if state.running and active_workers > 0 %}
+    <span class="header-file">{{ active_workers }} file{{ 's' if active_workers != 1 else '' }} encoding</span>
     {% endif %}
   </div>
 
   <div class="header-actions">
+    <div class="workers-select">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/>
+      </svg>
+      <select id="workersSelect" onchange="setWorkers(this.value)" title="Parallel workers">
+        {% for n in [1,2,3,4] %}
+        <option value="{{ n }}" {{ 'selected' if n == workers_count else '' }}>{{ n }}×</option>
+        {% endfor %}
+      </select>
+    </div>
     <button class="btn btn-run"  onclick="apiPost('/api/run')">
       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       Run Now
@@ -823,31 +937,36 @@
   </div>
   {% endif %}
 
-  <!-- ── Progress (running only) ──────────────────────────── -->
+  <!-- ── Workers (running only) ───────────────────────────── -->
   {% if state.running %}
-  <div class="progress-box">
-    <div class="progress-header">
-      <div class="progress-filename">{{ state.current_file or '—' }}</div>
-      <div class="progress-tags">
-        {% if state.current_codec %}
-        <span class="tag tag-codec">{{ state.current_codec }} &rarr; hevc_nvenc</span>
-        {% endif %}
-        <span class="tag">CQ {{ cq }}</span>
-        {% if state.started_at %}
-        <span class="tag">{{ state.started_at }}</span>
+  <div class="workers-grid">
+    {% for slot_id in range(workers_count) %}
+    {% set w = state.workers.get(slot_id) %}
+    <div class="worker-card {{ 'active' if w else '' }}" id="worker-{{ slot_id }}">
+      <div class="worker-header">
+        <span class="worker-label">Worker {{ slot_id + 1 }}</span>
+        {% if w %}
+        <span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>
         {% endif %}
       </div>
+      {% if w %}
+      <div class="worker-file">{{ w.file or '—' }}</div>
+      <div class="bar-track">
+        <div class="bar-glow"  id="wglow-{{ slot_id }}" style="width:{{ '%.1f'|format(w.progress) }}%"></div>
+        <div class="bar-fill"  id="wbar-{{ slot_id }}"  style="width:{{ '%.1f'|format(w.progress) }}%"></div>
+      </div>
+      <div class="progress-footer">
+        <span class="progress-pct" id="wpct-{{ slot_id }}">{{ '%.1f'|format(w.progress) }}%</span>
+        <span>live &mdash; 2 s</span>
+      </div>
+      {% else %}
+      <div class="worker-idle-inner">
+        <span class="worker-idle-dot"></span>
+        <span class="worker-idle-txt">Idle &mdash; waiting for next file</span>
+      </div>
+      {% endif %}
     </div>
-
-    <div class="bar-track">
-      <div class="bar-glow" id="barGlow" style="width:{{ '%.1f'|format(state.progress) }}%"></div>
-      <div class="bar-fill"  id="bar"     style="width:{{ '%.1f'|format(state.progress) }}%"></div>
-    </div>
-
-    <div class="progress-footer">
-      <span class="progress-pct" id="pct">{{ '%.1f'|format(state.progress) }}%</span>
-      <span>live &mdash; refreshes every 2 s</span>
-    </div>
+    {% endfor %}
   </div>
   {% endif %}
 
@@ -961,19 +1080,38 @@
     }
   }
 
+  async function setWorkers(n) {
+    try {
+      const r = await fetch('/api/workers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: parseInt(n) }),
+      });
+      const d = await r.json();
+      const sel = document.getElementById('workersSelect');
+      if (sel) sel.value = d.workers;
+    } catch (_) {}
+  }
+
   /* ── Live progress polling ───────────────────────────────── */
   {% if state.running %}
   setInterval(async () => {
     try {
       const r = await fetch('/api/status');
       const d = await r.json();
-      const p = (d.state.progress || 0).toFixed(1);
-      const bar  = document.getElementById('bar');
-      const glow = document.getElementById('barGlow');
-      const pct  = document.getElementById('pct');
-      if (bar)  bar.style.width  = p + '%';
-      if (glow) glow.style.width = p + '%';
-      if (pct)  pct.textContent  = p + '%';
+      const workers = d.state.workers || {};
+      for (let i = 0; i < {{ workers_count }}; i++) {
+        const w   = workers[String(i)];
+        const bar  = document.getElementById('wbar-'  + i);
+        const glow = document.getElementById('wglow-' + i);
+        const pct  = document.getElementById('wpct-'  + i);
+        if (w && bar) {
+          const p = (w.progress || 0).toFixed(1);
+          bar.style.width  = p + '%';
+          if (glow) glow.style.width = p + '%';
+          if (pct)  pct.textContent  = p + '%';
+        }
+      }
     } catch (_) {}
   }, 2000);
   {% endif %}

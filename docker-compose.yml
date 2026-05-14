@@ -21,6 +21,7 @@ services:
       - FFMPEG_CQ=${FFMPEG_CQ:-19}
       - FFMPEG_PRESET=${FFMPEG_PRESET:-fast}
       - DRY_RUN=${DRY_RUN:-false}
+      - FFMPEG_WORKERS=${FFMPEG_WORKERS:-2}
     deploy:
       resources:
         reservations:

@@ -67,6 +67,7 @@ async def dashboard(request: Request):
         'schedule_hour': SCHEDULE_HOUR,
         'cq':            transcoder.CQ,
         'version':       APP_VERSION,
+        'workers_count': transcoder.WORKERS,
     })
 
 
@@ -90,3 +91,12 @@ async def api_run():
 async def api_stop():
     transcoder.stop_scan()
     return JSONResponse({'ok': True, 'msg': 'Stop signal sent — finishing current file'})
+
+
+@app.post('/api/workers')
+async def api_set_workers(request: Request):
+    body = await request.json()
+    n = int(body.get('count', transcoder.WORKERS))
+    n = max(1, min(n, 4))
+    transcoder.WORKERS = n
+    return JSONResponse({'ok': True, 'workers': n})
