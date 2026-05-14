@@ -1410,6 +1410,12 @@
   </div>
   <div class="sys-sep"></div>
   <div class="sys-item">
+    <span class="sys-lbl">RAM</span>
+    <div class="sys-track"><div class="sys-fill" id="memFill"></div></div>
+    <span class="sys-pct" id="memPct">—</span>
+  </div>
+  <div class="sys-sep"></div>
+  <div class="sys-item">
     <span class="sys-lbl">ETH</span>
     <span class="sys-arrow">↓</span>
     <span class="sys-net-val" id="rxVal">— MB/s</span>
@@ -2158,6 +2164,7 @@
     try {
       const d = await fetch('/api/sysinfo').then(r => r.json());
       _updateSysBar('cpuFill', 'cpuPct', d.cpu);
+      _updateSysBar('memFill', 'memPct', d.mem);
       _updateSysBar('gpuFill', 'gpuPct', d.gpu);
       const rx = document.getElementById('rxVal');
       const tx = document.getElementById('txVal');

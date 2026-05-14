@@ -117,6 +117,21 @@ def _read_cpu_pct() -> float:
         return 0.0
 
 
+def _read_mem_pct() -> float:
+    try:
+        info = {}
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            k, v = line.split(':', 1)
+            info[k.strip()] = int(v.split()[0])
+        total = info.get('MemTotal', 0)
+        avail = info.get('MemAvailable', 0)
+        if total == 0:
+            return 0.0
+        return round((total - avail) / total * 100, 1)
+    except Exception:
+        return 0.0
+
+
 def _read_gpu_pct() -> float:
     try:
         r = subprocess.run(
@@ -199,6 +214,7 @@ async def api_sysinfo():
     rx, tx = _read_net_mbps()
     return JSONResponse({
         'cpu': _read_cpu_pct(),
+        'mem': _read_mem_pct(),
         'gpu': _read_gpu_pct(),
         'rx_mbps': rx,
         'tx_mbps': tx,
