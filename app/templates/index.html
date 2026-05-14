@@ -1831,6 +1831,20 @@
         </div>
       </div>
 
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">System Resources Bar (ETH)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="modal-code">/proc/net/dev</code> via a read-only bind-mount — the container itself carries almost no traffic.<br><br>
+          Required in <code class="modal-code">docker-compose.yml</code>:<br>
+          <code class="modal-code">- /proc/net:/host/proc/net:ro</code><br><br>
+          Two env vars control which interface is shown:<br><br>
+          <code class="modal-code">NET_IFACE=eno1</code> &nbsp;— pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
+          <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;— path to read counters from. Only change this if you use a different mount point.
+        </div>
+      </div>
+
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeHelpModal()">Close</button>
       </div>
