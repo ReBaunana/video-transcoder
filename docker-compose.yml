@@ -11,7 +11,7 @@ services:
       - ./data:/data
       # Expose host /proc/net read-only so the app can read real NIC counters
       # without requiring network_mode: host (which conflicts with macvlan setups).
-      - /proc/net:/host/proc/net:ro
+      - /proc/1/net:/host/proc/net:ro
       # Mount one or more media directories under /media — all subdirectories
       # are scanned automatically. Add as many mounts as needed.
       # - /path/to/movies:/media/movies

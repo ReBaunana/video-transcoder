@@ -49,7 +49,7 @@ Environment variables (`.env` file). All settings can also be changed live in th
 | `BACKUP_INTERVAL_H` | `24` | Auto-backup interval in hours (0 = off) |
 | `BACKUP_KEEP` | `7` | Number of DB backups to keep |
 | `NET_IFACE` | `eno1` | NIC name(s) for the ETH stats bar (comma-separated). Change to match your host — e.g. `enp6s0`, `eth0`. |
-| `PROC_NET_DEV` | `/host/proc/net/dev` | Path to read NIC counters from. Requires `- /proc/net:/host/proc/net:ro` volume mount in docker-compose. |
+| `PROC_NET_DEV` | `/host/proc/net/dev` | Path to read NIC counters from. Requires `- /proc/1/net:/host/proc/net:ro` volume mount in docker-compose. Note: `/proc/net` is a symlink that resolves to the container's own namespace — must use `/proc/1/net` (host PID 1) instead. |
 
 ## CQ Quality Guide
 
