@@ -30,12 +30,13 @@ OUTPUT_EXT = {
 # ── Shared state (read by web UI) ─────────────────────────────────────────────
 
 state: dict = {
-    'running':       False,
-    'current_file':  None,
-    'current_codec': None,
-    'progress':      0.0,
-    'started_at':    None,
-    'session':       {'done': 0, 'failed': 0, 'skipped': 0},
+    'running':        False,
+    'current_file':   None,
+    'current_codec':  None,
+    'current_mount':  None,
+    'progress':       0.0,
+    'started_at':     None,
+    'session':        {'done': 0, 'failed': 0, 'skipped': 0},
 }
 _stop = threading.Event()
 _lock = threading.Lock()
@@ -89,6 +90,12 @@ def _run_ffmpeg(cmd: list, duration: float) -> int:
                 state['progress'] = min(_parse_time(m.group(1)) / duration * 100, 99.9)
     proc.wait()
     return proc.returncode
+
+
+def get_mounts() -> list[str]:
+    if not MEDIA_ROOT.exists():
+        return []
+    return sorted(p.name for p in MEDIA_ROOT.iterdir() if p.is_dir())
 
 
 def cleanup_leftover_temps():
@@ -237,6 +244,8 @@ def run_scan(db):
 
         for mount in mounts:
             log.info(f'--- {mount.name} ---')
+            with _lock:
+                state['current_mount'] = mount.name
             for root, dirs, files in os.walk(mount, topdown=True):
                 dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
                 if _stop.is_set():
@@ -257,7 +266,7 @@ def run_scan(db):
         with _lock:
             state.update({
                 'running': False, 'current_file': None,
-                'current_codec': None, 'progress': 0.0,
+                'current_codec': None, 'current_mount': None, 'progress': 0.0,
             })
         log.info(f'=== Scan done: {state["session"]} ===')
 

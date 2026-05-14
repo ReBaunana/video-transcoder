@@ -100,6 +100,21 @@ def cache_set(conn, path: str, size: int, mtime: float, codec: str, duration: fl
     conn.commit()
 
 
+def get_mount_stats(conn) -> list:
+    rows = conn.execute("""
+        SELECT
+            mount,
+            SUM(CASE WHEN status='done'   THEN 1 ELSE 0 END) AS done,
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+            SUM(CASE WHEN status='done'   THEN src_size  ELSE 0 END) AS src_bytes,
+            SUM(CASE WHEN status='done'   THEN dest_size ELSE 0 END) AS dest_bytes
+        FROM jobs
+        WHERE mount IS NOT NULL AND mount != ''
+        GROUP BY mount ORDER BY mount
+    """).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_recent_jobs(conn, limit: int = 50) -> list:
     rows = conn.execute("""
         SELECT id,filename,mount,src_codec,src_size,dest_size,elapsed_s,started_at,status,error

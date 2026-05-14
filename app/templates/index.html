@@ -546,6 +546,66 @@
       font-size: .8rem;
     }
 
+    /* ─── Mounts strip ───────────────────────────── */
+    .mounts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .mount-card {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .7rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: border-color .2s, box-shadow .2s;
+      min-width: 0;
+    }
+    .mount-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 4px 18px rgba(0,0,0,.3);
+    }
+    .mount-card.active {
+      border-color: rgba(103,232,249,.22);
+      background: var(--cyan-bg);
+    }
+
+    .mount-icon {
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+    .mount-card.active .mount-icon { color: var(--cyan); }
+
+    .mount-info { min-width: 0; }
+
+    .mount-name {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+
+    .mount-meta {
+      display: flex;
+      gap: .5rem;
+      margin-top: .18rem;
+    }
+
+    .mount-stat {
+      font-size: .67rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .mount-stat.green { color: var(--green); }
+    .mount-stat.red   { color: var(--red); }
+
     /* ─── Animations ─────────────────────────────── */
     @keyframes fade-up {
       from { opacity: 0; transform: translateY(7px); }
@@ -678,6 +738,42 @@
     </div>
 
   </div><!-- /cards -->
+
+  <!-- ── Mounts ──────────────────────────────────────────── -->
+  {% if mounts %}
+  <div class="mounts">
+    {% for m in mounts %}
+    <div class="mount-card {{ 'active' if state.current_mount == m.name else '' }}">
+      <div class="mount-icon">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <div class="mount-info">
+        <div class="mount-name">/media/{{ m.name }}</div>
+        <div class="mount-meta">
+          {% if m.done %}
+          <span class="mount-stat green">{{ m.done }} done</span>
+          {% endif %}
+          {% if m.failed %}
+          <span class="mount-stat red">{{ m.failed }} failed</span>
+          {% endif %}
+          {% if m.src_bytes %}
+          {% set saved = (m.src_bytes - m.dest_bytes) / 1073741824 %}
+          <span class="mount-stat {{ 'green' if saved > 0 else 'red' }}">
+            {{ '%+.1f'|format(saved) }} GB
+          </span>
+          {% endif %}
+          {% if not m.done and not m.failed %}
+          <span class="mount-stat">not yet scanned</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <!-- ── Progress (running only) ──────────────────────────── -->
   {% if state.running %}

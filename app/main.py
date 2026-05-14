@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from app.database import init as db_init, get_stats, get_codec_stats, get_recent_jobs
+from app.database import init as db_init, get_stats, get_codec_stats, get_recent_jobs, get_mount_stats
 from app import transcoder
 
 logging.basicConfig(
@@ -52,11 +52,17 @@ def _start_scheduler():
 
 @app.get('/', response_class=HTMLResponse)
 async def dashboard(request: Request):
+    mount_stats = {r['mount']: r for r in get_mount_stats(db)}
+    mounts = [
+        {**mount_stats.get(name, {'done': 0, 'failed': 0, 'src_bytes': 0, 'dest_bytes': 0}), 'name': name}
+        for name in transcoder.get_mounts()
+    ]
     return templates.TemplateResponse(request, 'index.html', context={
         'state':         transcoder.state,
         'stats':         get_stats(db),
         'codec_stats':   get_codec_stats(db),
         'recent':        get_recent_jobs(db, 50),
+        'mounts':        mounts,
         'schedule_hour': SCHEDULE_HOUR,
         'cq':            transcoder.CQ,
     })
