@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.database import (
-    init as db_init, backup as db_backup, BACKUP_DIR,
+    init as db_init, backup as db_backup, reset_db, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
 )
 from app import transcoder
@@ -164,6 +164,14 @@ async def api_set_config(request: Request):
         'dry_run': transcoder.DRY_RUN,
         'workers': transcoder.WORKERS,
     })
+
+
+@app.post('/api/reset')
+async def api_reset():
+    if transcoder.state['running']:
+        return JSONResponse({'ok': False, 'msg': 'Stop the scan before resetting'}, status_code=409)
+    reset_db(db)
+    return JSONResponse({'ok': True})
 
 
 @app.post('/api/backup')

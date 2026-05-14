@@ -896,6 +896,30 @@
       background: rgba(108,142,245,.15);
       border-color: rgba(108,142,245,.35);
     }
+
+    /* ─── Job filter pills ──────────────────────────── */
+    .filter-pills { display: flex; gap: .3rem; flex-wrap: wrap; }
+
+    .filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .25rem;
+      padding: .16rem .48rem;
+      border-radius: 99px;
+      font-size: .67rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: inherit;
+      letter-spacing: .02em;
+      transition: all .12s;
+    }
+    .filter-pill:hover { border-color: var(--border-hover); color: var(--text); }
+    .filter-pill.fp-active { background: var(--surface-3); border-color: var(--border-hover); color: var(--text); }
+    .filter-pill.fp-done   { border-color: rgba(52,211,153,.25);  color: var(--green); background: var(--green-bg); }
+    .filter-pill.fp-failed { border-color: rgba(248,113,113,.25); color: var(--red);   background: var(--red-bg);   }
   </style>
 </head>
 <body>
@@ -1072,6 +1096,11 @@
       <button class="btn btn-backup" onclick="doBackup()">Backup Now</button>
       <div class="setting-hint" id="lastBackup">{{ last_backup or 'No backup yet' }}</div>
     </div>
+    <div class="setting-card" style="border-color:rgba(248,113,113,.14);">
+      <div class="setting-label" style="color:rgba(248,113,113,.6)">Reset DB</div>
+      <button class="btn btn-stop" onclick="resetDB()">Reset All</button>
+      <div class="setting-hint">Clears jobs &amp; file cache</div>
+    </div>
   </div>
 
   <!-- ── Workers (running only) ───────────────────────────── -->
@@ -1147,11 +1176,20 @@
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title">Recent Jobs</span>
-        <div style="display:flex;gap:.35rem">
-          {% set done_n   = recent | selectattr('status','equalto','done')   | list | length %}
-          {% set failed_n = recent | selectattr('status','equalto','failed') | list | length %}
-          {% if done_n %}  <span class="badge badge-done">{{ done_n }}</span>{% endif %}
-          {% if failed_n %}<span class="badge badge-failed">{{ failed_n }}</span>{% endif %}
+        {% set done_n    = recent | selectattr('status','equalto','done')    | list | length %}
+        {% set failed_n  = recent | selectattr('status','equalto','failed')  | list | length %}
+        {% set running_n = recent | selectattr('status','equalto','running') | list | length %}
+        <div class="filter-pills">
+          <button class="filter-pill fp-active" data-filter="all"     onclick="filterJobs(this,'all')">All&nbsp;{{ recent|length }}</button>
+          {% if done_n %}
+          <button class="filter-pill" data-filter="done"    onclick="filterJobs(this,'done')">Done&nbsp;{{ done_n }}</button>
+          {% endif %}
+          {% if failed_n %}
+          <button class="filter-pill" data-filter="failed"  onclick="filterJobs(this,'failed')">Failed&nbsp;{{ failed_n }}</button>
+          {% endif %}
+          {% if running_n %}
+          <button class="filter-pill" data-filter="running" onclick="filterJobs(this,'running')">Running&nbsp;{{ running_n }}</button>
+          {% endif %}
         </div>
       </div>
       <div class="tbl-wrap">
@@ -1168,9 +1206,9 @@
               <th>Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="jobsBody">
             {% for job in recent %}
-            <tr title="{{ job.path }}">
+            <tr data-status="{{ job.status }}" title="{{ job.path }}">
               <td class="td-file">{{ job.filename[:48] }}{% if job.filename | length > 48 %}&hellip;{% endif %}</td>
               <td class="td-dim">{{ job.mount or '—' }}</td>
               <td class="td-dim">{{ job.src_codec or '—' }}</td>
@@ -1214,6 +1252,30 @@
       location.reload();
     } catch (e) {
       alert('Request failed: ' + e.message);
+    }
+  }
+
+  function filterJobs(btn, status) {
+    document.querySelectorAll('#jobsBody tr[data-status]').forEach(r => {
+      r.style.display = (status === 'all' || r.dataset.status === status) ? '' : 'none';
+    });
+    document.querySelectorAll('.filter-pill').forEach(b => {
+      b.classList.remove('fp-active', 'fp-done', 'fp-failed');
+    });
+    btn.classList.add('fp-active');
+    if (status === 'done')   btn.classList.add('fp-done');
+    if (status === 'failed') btn.classList.add('fp-failed');
+  }
+
+  async function resetDB() {
+    if (!confirm('Delete ALL job history and file cache?\n\nFiles will be re-transcoded on next scan.')) return;
+    try {
+      const r = await fetch('/api/reset', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) { alert(d.msg || 'Reset failed'); return; }
+      location.reload();
+    } catch (e) {
+      alert('Reset failed: ' + e.message);
     }
   }
 

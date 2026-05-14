@@ -139,6 +139,12 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+def reset_db(conn: sqlite3.Connection):
+    conn.execute("DELETE FROM jobs")
+    conn.execute("DELETE FROM file_cache")
+    conn.commit()
+
+
 BACKUP_DIR = Path('/data/backups')
 
 def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR) -> Path:
