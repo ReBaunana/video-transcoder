@@ -1597,7 +1597,7 @@
                 {% else %}—{% endif %}
               </td>
               <td class="td-num">{% if job.elapsed_s %}{{ '%.0f'|format(job.elapsed_s) }} s{% else %}—{% endif %}</td>
-              <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+              <td><span class="badge badge-{{ job.status }}"{% if job.error %} title="{{ job.error }}"{% endif %}>{{ job.status }}</span></td>
             </tr>
             {% else %}
             <tr class="empty-row"><td colspan="8">No jobs recorded yet</td></tr>
