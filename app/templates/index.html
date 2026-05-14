@@ -1273,6 +1273,21 @@
     .btn-stop.btn-working { opacity: .55; pointer-events: none; }
     .btn-run.btn-working  { opacity: .55; pointer-events: none; }
 
+    .btn-running {
+      background: rgba(52,211,153,.06);
+      border: 1px solid rgba(52,211,153,.18);
+      color: var(--green);
+      cursor: default;
+      pointer-events: none;
+    }
+    .btn-running .btn-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: btn-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes btn-pulse { 50% { opacity: .3; box-shadow: none; } }
+
     /* ─── Confirm modal variant ───────────────────────── */
     .modal-warn-stripe {
       border-left: 3px solid var(--yellow);
@@ -1348,9 +1363,14 @@
         <span style="color:var(--text-muted)">5–8×</span>&nbsp; diminishing returns on RTX 3050 Ti
       </div>
     </div>
-    <button class="btn btn-run"  onclick="apiPost('/api/run')">
-      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      Run Now
+    <button class="btn {{ 'btn-running' if state.running else 'btn-run' }}" id="btnRun"
+      {% if not state.running %}onclick="apiPost('/api/run')"{% endif %}>
+      {% if state.running %}
+        <span class="btn-dot"></span> Running
+      {% else %}
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Run Now
+      {% endif %}
     </button>
     <button class="btn btn-soft-stop" id="btnSoftStop" onclick="apiPost('/api/soft-stop')"
       style="{{ 'display:none' if not state.running or state.stopping else '' }}">
@@ -2002,7 +2022,10 @@
 
   /* ── Generic POST (Run / Stop) ────────────────────────────── */
   async function apiPost(url) {
-    const btn = document.querySelector(url === '/api/stop' ? '.btn-stop' : url === '/api/soft-stop' ? '.btn-soft-stop' : '.btn-run');
+    const btn = url === '/api/run' ? document.getElementById('btnRun')
+              : url === '/api/stop' ? document.querySelector('.btn-stop')
+              : url === '/api/soft-stop' ? document.querySelector('.btn-soft-stop')
+              : null;
     if (btn) btn.classList.add('btn-working');
     try {
       const r = await fetch(url, { method: 'POST' });
