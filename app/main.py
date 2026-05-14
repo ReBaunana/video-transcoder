@@ -22,6 +22,7 @@ templates = Jinja2Templates(directory='app/templates')
 db        = None
 
 SCHEDULE_HOUR = int(os.getenv('SCHEDULE_HOUR', '3'))
+APP_VERSION   = os.getenv('APP_VERSION', 'dev')
 
 
 @app.on_event('startup')
@@ -65,6 +66,7 @@ async def dashboard(request: Request):
         'mounts':        mounts,
         'schedule_hour': SCHEDULE_HOUR,
         'cq':            transcoder.CQ,
+        'version':       APP_VERSION,
     })
 
 

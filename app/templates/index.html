@@ -622,6 +622,54 @@
     .progress-box { animation: fade-up .3s .08s ease both; }
     .panel        { animation: fade-up .32s .14s ease both; }
 
+    /* ─── Version badge ─────────────────────────── */
+    .version-badge {
+      position: fixed;
+      bottom: 1.1rem;
+      right: 1.25rem;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      gap: .38rem;
+      padding: .3rem .7rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: .68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: default;
+      transition: border-color .2s, color .2s, background .2s, box-shadow .2s;
+      text-decoration: none;
+    }
+    .version-badge:hover {
+      border-color: var(--border-hover);
+      color: var(--text);
+    }
+    .version-badge.update-available {
+      background: rgba(251,191,36,.08);
+      border-color: rgba(251,191,36,.3);
+      color: var(--yellow);
+      box-shadow: 0 0 14px rgba(251,191,36,.1);
+      cursor: pointer;
+    }
+    .version-badge.update-available:hover {
+      background: rgba(251,191,36,.14);
+      border-color: rgba(251,191,36,.5);
+    }
+    .vbadge-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+    .update-available .vbadge-dot {
+      background: var(--yellow);
+      box-shadow: 0 0 5px var(--yellow);
+      animation: pulse-dot 1.6s ease-in-out infinite;
+    }
+
     /* ─── Responsive ─────────────────────────────── */
     @media (max-width: 960px) {
       .grid2 { grid-template-columns: 1fr; }
@@ -894,6 +942,12 @@
   </div><!-- /grid2 -->
 </main>
 
+<!-- ═══ VERSION BADGE ══════════════════════════════════════ -->
+<a id="versionBadge" class="version-badge" title="Current version">
+  <span class="vbadge-dot"></span>
+  <span id="versionLabel">v{{ version }}</span>
+</a>
+
 <script>
   /* ── API actions ──────────────────────────────────────────── */
   async function apiPost(url) {
@@ -926,6 +980,33 @@
 
   /* ── Full-page auto-refresh ──────────────────────────────── */
   setTimeout(() => location.reload(), 20000);
+
+  /* ── Version update check ────────────────────────────────── */
+  (async function () {
+    const current = '{{ version }}';
+    if (!current || current === 'dev') return;
+    try {
+      const r = await fetch(
+        'https://api.github.com/repos/ReBaunana/video-transcoder/releases/latest',
+        { headers: { Accept: 'application/vnd.github+json' } }
+      );
+      if (!r.ok) return;
+      const d = await r.json();
+      const latest = (d.tag_name || '').replace(/^v/, '');
+      const cur    = current.replace(/^v/, '');
+      if (latest && latest !== cur) {
+        const badge = document.getElementById('versionBadge');
+        const label = document.getElementById('versionLabel');
+        if (badge) {
+          badge.classList.add('update-available');
+          badge.href  = d.html_url || '#';
+          badge.target = '_blank';
+          badge.title = `Update available: v${latest}`;
+        }
+        if (label) label.textContent = `v${cur} → v${latest}`;
+      }
+    } catch (_) {}
+  })();
 
   /* ── Chart.js doughnut ───────────────────────────────────── */
   {% if codec_stats %}

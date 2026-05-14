@@ -1,7 +1,9 @@
 FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
+ARG APP_VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    APP_VERSION=${APP_VERSION}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg \
