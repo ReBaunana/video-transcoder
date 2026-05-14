@@ -177,6 +177,12 @@ def _read_gpu_pct() -> float:
     return -1.0
 
 
+_net_log = logging.getLogger('net_mbps')
+# Suppress the "no physical interfaces" warning after the first emission so it
+# doesn't flood the log on every poll interval.
+_net_no_iface_warned: bool = False
+
+
 def _read_net_mbps() -> tuple[float, float]:
     """Return (rx_mbps, tx_mbps) summed over all selected network interfaces.
 
@@ -186,16 +192,18 @@ def _read_net_mbps() -> tuple[float, float]:
 
     First call always returns (0, 0) — that seeds the delta baseline.
     """
-    global _net_prev, _net_prev_ts
+    global _net_prev, _net_prev_ts, _net_no_iface_warned
     try:
         now = time.monotonic()
         samples: dict[str, tuple[int, int]] = {}
+        all_ifaces: list[str] = []
 
         for line in _PROC_NET_DEV.read_text().splitlines()[2:]:
             p = line.split()
             if len(p) < 10:
                 continue
             iface = p[0].rstrip(':')
+            all_ifaces.append(iface)
             if _NET_IFACE_OVERRIDE:
                 if iface not in _NET_IFACE_OVERRIDE:
                     continue
@@ -204,6 +212,16 @@ def _read_net_mbps() -> tuple[float, float]:
                     continue
             samples[iface] = (int(p[1]), int(p[9]))
 
+        if not samples and not _net_no_iface_warned:
+            _net_log.warning(
+                'No network interfaces selected for RX/TX metrics. '
+                'Reading from %s — found interfaces: [%s]. '
+                'Set NET_IFACE=<iface> (comma-separated) to pin a specific interface.',
+                _PROC_NET_DEV,
+                ', '.join(all_ifaces) if all_ifaces else '<none>',
+            )
+            _net_no_iface_warned = True
+
         if _net_prev is None:
             _net_prev = samples
             _net_prev_ts = now
@@ -211,8 +229,7 @@ def _read_net_mbps() -> tuple[float, float]:
 
         dt = now - _net_prev_ts
         if dt < 0.1:
-            # Called too quickly — return last known good values aren't stored,
-            # so just skip the update and return zero to avoid div-by-zero.
+            # Called too quickly — skip update to avoid div-by-zero.
             return 0.0, 0.0
 
         rx_delta = tx_delta = 0
@@ -225,7 +242,8 @@ def _read_net_mbps() -> tuple[float, float]:
         _net_prev_ts = now
 
         return round(rx_delta / dt / 1_000_000, 2), round(tx_delta / dt / 1_000_000, 2)
-    except Exception:
+    except Exception as exc:
+        _net_log.warning('Failed to read network stats from %s: %s', _PROC_NET_DEV, exc)
         return 0.0, 0.0
 
 

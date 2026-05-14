@@ -5,10 +5,13 @@ services:
     build: .
     container_name: video-transcoder
     restart: unless-stopped
-    network_mode: host   # needed so /proc/net/dev reflects host NIC stats
-    # ports: not used with network_mode: host — bind directly to host port 8267
+    ports:
+      - "8267:8267"
     volumes:
       - ./data:/data
+      # Expose host /proc/net read-only so the app can read real NIC counters
+      # without requiring network_mode: host (which conflicts with macvlan setups).
+      - /proc/net:/host/proc/net:ro
       # Mount one or more media directories under /media — all subdirectories
       # are scanned automatically. Add as many mounts as needed.
       # - /path/to/movies:/media/movies
@@ -22,6 +25,11 @@ services:
       - FFMPEG_PRESET=${FFMPEG_PRESET:-fast}
       - DRY_RUN=${DRY_RUN:-false}
       - FFMPEG_WORKERS=${FFMPEG_WORKERS:-2}
+      # Point to the host-mounted /proc/net/dev for real NIC counters.
+      # Set NET_IFACE to pin a specific interface (comma-separated); without it
+      # the code auto-detects physical interfaces, which works fine on most hosts.
+      - PROC_NET_DEV=/host/proc/net/dev
+      - NET_IFACE=${NET_IFACE:-eno1}
     deploy:
       resources:
         reservations:
