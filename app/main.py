@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -89,6 +90,73 @@ def _start_scheduler():
     threading.Thread(target=_loop, daemon=True, name='scheduler').start()
 
 
+# ── Sysinfo helpers ───────────────────────────────────────────────────────────
+
+_cpu_prev: tuple | None = None
+_net_prev: tuple | None = None
+_net_prev_ts: float = 0.0
+
+
+def _read_cpu_pct() -> float:
+    global _cpu_prev
+    try:
+        parts = Path('/proc/stat').read_text().split('\n', 1)[0].split()
+        vals = [int(x) for x in parts[1:9]]   # user nice system idle iowait irq softirq steal
+        idle = vals[3] + vals[4]
+        total = sum(vals)
+        if _cpu_prev is None:
+            _cpu_prev = (idle, total)
+            return 0.0
+        d_idle = idle - _cpu_prev[0]
+        d_total = total - _cpu_prev[1]
+        _cpu_prev = (idle, total)
+        if d_total == 0:
+            return 0.0
+        return round(max(0.0, min(100.0, (1 - d_idle / d_total) * 100)), 1)
+    except Exception:
+        return 0.0
+
+
+def _read_gpu_pct() -> float:
+    try:
+        r = subprocess.run(
+            ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode == 0:
+            return float(r.stdout.strip().split('\n')[0])
+    except Exception:
+        pass
+    return -1.0
+
+
+def _read_net_mbps() -> tuple[float, float]:
+    global _net_prev, _net_prev_ts
+    try:
+        now = time.monotonic()
+        rx = tx = 0
+        for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
+            p = line.split()
+            if len(p) < 10 or p[0].rstrip(':') == 'lo':
+                continue
+            rx += int(p[1])
+            tx += int(p[9])
+        if _net_prev is None:
+            _net_prev = (rx, tx)
+            _net_prev_ts = now
+            return 0.0, 0.0
+        dt = now - _net_prev_ts
+        if dt < 0.1:
+            return 0.0, 0.0
+        rx_mbps = max(0.0, (rx - _net_prev[0]) / dt / 1_000_000)
+        tx_mbps = max(0.0, (tx - _net_prev[1]) / dt / 1_000_000)
+        _net_prev = (rx, tx)
+        _net_prev_ts = now
+        return round(rx_mbps, 2), round(tx_mbps, 2)
+    except Exception:
+        return 0.0, 0.0
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get('/', response_class=HTMLResponse)
@@ -123,6 +191,17 @@ async def api_status():
     return JSONResponse({
         'state': transcoder.state,
         'stats': get_stats(db),
+    })
+
+
+@app.get('/api/sysinfo')
+async def api_sysinfo():
+    rx, tx = _read_net_mbps()
+    return JSONResponse({
+        'cpu': _read_cpu_pct(),
+        'gpu': _read_gpu_pct(),
+        'rx_mbps': rx,
+        'tx_mbps': tx,
     })
 
 
