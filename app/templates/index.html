@@ -1199,6 +1199,23 @@
     .btn-stop.btn-working { opacity: .55; pointer-events: none; }
     .btn-run.btn-working  { opacity: .55; pointer-events: none; }
 
+    /* ─── Confirm modal variant ───────────────────────── */
+    .modal-warn-stripe {
+      border-left: 3px solid var(--yellow);
+    }
+    .modal-warn-stripe .modal-header {
+      border-bottom-color: rgba(251,191,36,.2);
+    }
+    .btn-danger {
+      background: rgba(248,113,113,.1);
+      border-color: rgba(248,113,113,.25);
+      color: var(--red);
+    }
+    .btn-danger:hover {
+      background: rgba(248,113,113,.18);
+      border-color: rgba(248,113,113,.45);
+    }
+
     /* tooltip appearing below the trigger (e.g. sticky header) */
     .tip-below {
       bottom: auto;
@@ -1691,6 +1708,23 @@
   </div>
 </div>
 
+<!-- ═══ CONFIRM MODAL ══════════════════════════════════════ -->
+<div id="confirmModal" class="modal-backdrop" onclick="if(event.target===this)_confirmResolve(false)">
+  <div class="modal modal-warn-stripe" role="dialog" aria-modal="true" style="width:min(420px,92vw)">
+    <div class="modal-header">
+      <span class="panel-title" id="confirmTitle">Confirm</span>
+      <button class="modal-close" onclick="_confirmResolve(false)" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="confirmBody" style="font-size:.82rem;color:var(--text-muted);line-height:1.65;"></div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="_confirmResolve(false)">Cancel</button>
+        <button id="confirmOkBtn" class="btn btn-danger" onclick="_confirmResolve(true)">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ SCAN SCHEDULE MODAL ═════════════════════════════════ -->
 <div id="scanModal" class="modal-backdrop" onclick="if(event.target===this)closeScanModal()">
   <div class="modal" role="dialog" aria-modal="true">
@@ -1787,9 +1821,25 @@
   function closeScanModal()   { document.getElementById('scanModal').classList.remove('open'); }
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      closeBackupModal(); closeHelpModal(); closeScanModal();
+      closeBackupModal(); closeHelpModal(); closeScanModal(); _confirmResolve(false);
     }
   });
+
+  /* ── Custom confirm modal (replaces window.confirm) ──────── */
+  let _confirmResolveRef = null;
+
+  function _confirmResolve(result) {
+    document.getElementById('confirmModal').classList.remove('open');
+    if (_confirmResolveRef) { _confirmResolveRef(result); _confirmResolveRef = null; }
+  }
+
+  function openConfirm(title, body, okLabel) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmBody').innerHTML = body;
+    document.getElementById('confirmOkBtn').textContent = okLabel || 'Confirm';
+    document.getElementById('confirmModal').classList.add('open');
+    return new Promise(resolve => { _confirmResolveRef = resolve; });
+  }
 
   async function saveBackupSettings() {
     const interval = parseInt(document.getElementById('bmInterval').value);
@@ -1875,29 +1925,38 @@
 
   async function cleanJobs() {
     toggleAdv();
-    if (!confirm('Clear job history?\n\nFile cache is kept — already-transcoded files will not be re-processed.\nSettings (CQ, preset, etc.) are not affected.')) return;
+    const ok = await openConfirm(
+      'Clean Jobs',
+      'Clear job history?<br><br>File cache is kept — already-transcoded files will <em>not</em> be re-processed.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>',
+      'Clean'
+    );
+    if (!ok) return;
     try {
       const r = await fetch('/api/clean-jobs', { method: 'POST' });
-      if (r.redirected) { alert('Authentication required — please reload the page.'); return; }
       const d = await r.json();
-      if (!d.ok) { alert(d.msg || 'Failed'); return; }
+      if (!d.ok) { showToast(d.msg || 'Failed', 'error'); return; }
       window.location.href = '/?_=' + Date.now();
     } catch (e) {
-      alert('Failed: ' + e.message);
+      showToast('Failed: ' + e.message, 'error');
     }
   }
 
   async function resetDB() {
     toggleAdv();
-    if (!confirm('Delete ALL job history AND file cache?\n\nAll files will be re-transcoded on next scan.\nSettings (CQ, preset, etc.) are not affected.')) return;
+    const ok = await openConfirm(
+      'Reset DB',
+      'Delete <strong style="color:var(--text)">ALL job history AND file cache</strong>?<br><br>All files will be re-transcoded on the next scan.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>',
+      'Reset'
+    );
+    if (!ok) return;
     try {
       const r = await fetch('/api/reset', { method: 'POST' });
-      if (r.redirected) { alert('Authentication required — please reload the page.'); return; }
       const d = await r.json();
-      if (!d.ok) { alert(d.msg || 'Reset failed'); return; }
-      window.location.href = '/?_=' + Date.now();
+      if (!d.ok) { showToast(d.msg || 'Reset failed', 'error'); return; }
+      showToast('Database reset — reloading…', 'success');
+      setTimeout(() => { window.location.href = '/?_=' + Date.now(); }, 1200);
     } catch (e) {
-      alert('Reset failed: ' + e.message);
+      showToast('Reset failed: ' + e.message, 'error');
     }
   }
 
