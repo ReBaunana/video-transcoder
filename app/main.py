@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.database import (
-    init as db_init, backup as db_backup, reset_db, BACKUP_DIR,
+    init as db_init, backup as db_backup, reset_db, clean_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
 )
 from app import transcoder
@@ -41,6 +41,7 @@ async def startup():
         (datetime.now().isoformat(),),
     )
     db.commit()
+    transcoder.load_settings()
     transcoder.cleanup_leftover_temps()
     if BACKUP_DIR.exists():
         backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
@@ -51,29 +52,40 @@ async def startup():
 
 
 def _start_scheduler():
-    backup_hour = (SCHEDULE_HOUR - 1) % 24
-
     def _loop():
         global last_backup_at
+        import time as _time
         log = logging.getLogger('scheduler')
-        last_backup_date = None
+
+        # Seed last backup timestamp from most recent file so we don't
+        # immediately back up right after startup if one is recent enough.
+        last_backup_ts = 0.0
+        if BACKUP_DIR.exists():
+            backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
+            if backups:
+                last_backup_ts = backups[-1].stat().st_mtime
+
         while True:
-            now = datetime.now()
-            if now.hour == backup_hour and last_backup_date != now.date():
+            now    = datetime.now()
+            now_ts = now.timestamp()
+
+            interval_h = transcoder.BACKUP_INTERVAL_H
+            if interval_h > 0 and (now_ts - last_backup_ts) >= interval_h * 3600:
                 try:
                     path = db_backup(db)
-                    log.info(f'Scheduled backup → {path.name}')
-                    last_backup_date = now.date()
+                    last_backup_ts = now_ts
                     last_backup_at = now.strftime('%Y-%m-%d %H:%M')
+                    log.info(f'Scheduled backup → {path.name}')
                 except Exception as e:
                     log.error(f'Backup failed: {e}')
+
             if now.hour == SCHEDULE_HOUR and now.minute == 0:
                 if not transcoder.state['running']:
                     log.info('Scheduled scan starting')
                     transcoder.start_scan(db)
-                time.sleep(61)
+                _time.sleep(61)
             else:
-                time.sleep(30)
+                _time.sleep(30)
 
     threading.Thread(target=_loop, daemon=True, name='scheduler').start()
 
@@ -99,9 +111,10 @@ async def dashboard(request: Request):
         'cq':            transcoder.CQ,
         'preset':        transcoder.PRESET,
         'dry_run':       transcoder.DRY_RUN,
-        'last_backup':   last_backup_at,
-        'version':       APP_VERSION,
-        'workers_count': transcoder.WORKERS,
+        'last_backup':        last_backup_at,
+        'version':            APP_VERSION,
+        'workers_count':      transcoder.WORKERS,
+        'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
     })
 
 
@@ -132,6 +145,7 @@ async def api_set_workers(request: Request):
     body = await request.json()
     n = max(1, min(int(body.get('count', transcoder.WORKERS)), 8))
     transcoder.WORKERS = n
+    transcoder.save_settings()
     return JSONResponse({'ok': True, 'workers': n})
 
 
@@ -145,10 +159,11 @@ _VALID_PRESETS = {
 @app.get('/api/config')
 async def api_get_config():
     return JSONResponse({
-        'cq':      transcoder.CQ,
-        'preset':  transcoder.PRESET,
-        'dry_run': transcoder.DRY_RUN,
-        'workers': transcoder.WORKERS,
+        'cq':               transcoder.CQ,
+        'preset':           transcoder.PRESET,
+        'dry_run':          transcoder.DRY_RUN,
+        'workers':          transcoder.WORKERS,
+        'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
     })
 
 
@@ -165,12 +180,16 @@ async def api_set_config(request: Request):
         transcoder.DRY_RUN = bool(body['dry_run'])
     if 'workers' in body:
         transcoder.WORKERS = max(1, min(int(body['workers']), 8))
+    if 'backup_interval_h' in body:
+        transcoder.BACKUP_INTERVAL_H = max(0, int(body['backup_interval_h']))
+    transcoder.save_settings()
     return JSONResponse({
-        'ok':      True,
-        'cq':      transcoder.CQ,
-        'preset':  transcoder.PRESET,
-        'dry_run': transcoder.DRY_RUN,
-        'workers': transcoder.WORKERS,
+        'ok':               True,
+        'cq':               transcoder.CQ,
+        'preset':           transcoder.PRESET,
+        'dry_run':          transcoder.DRY_RUN,
+        'workers':          transcoder.WORKERS,
+        'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
     })
 
 
@@ -179,6 +198,15 @@ async def api_reset():
     if transcoder.state['running']:
         return JSONResponse({'ok': False, 'msg': 'Stop the scan before resetting'}, status_code=409)
     reset_db(db)
+    transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
+    return JSONResponse({'ok': True})
+
+
+@app.post('/api/clean-jobs')
+async def api_clean_jobs():
+    if transcoder.state['running']:
+        return JSONResponse({'ok': False, 'msg': 'Stop the scan before cleaning jobs'}, status_code=409)
+    clean_jobs(db)
     transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
     return JSONResponse({'ok': True})
 

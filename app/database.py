@@ -50,11 +50,11 @@ def init(db_path: Path = DB_PATH) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(_SCHEMA)
     conn.commit()
     _migrate(conn)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -145,17 +145,24 @@ def reset_db(conn: sqlite3.Connection):
     conn.commit()
 
 
+def clean_jobs(conn: sqlite3.Connection):
+    conn.execute("DELETE FROM jobs")
+    conn.commit()
+
+
 BACKUP_DIR = Path('/data/backups')
 
 def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dest = backup_dir / f'transcoder_{ts}.db'
-    bconn = sqlite3.connect(str(dest))
+    tmp  = dest.with_suffix('.db.tmp')
+    bconn = sqlite3.connect(str(tmp))
     try:
         conn.backup(bconn)
     finally:
         bconn.close()
+    tmp.replace(dest)  # atomic — no partial file visible on disk-full
     # Keep only last 7 daily backups
     for old in sorted(backup_dir.glob('transcoder_*.db'))[:-7]:
         old.unlink(missing_ok=True)

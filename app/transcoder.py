@@ -10,13 +10,15 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-MEDIA_ROOT   = Path('/media')
-IDEAL_CODECS = frozenset({'hevc', 'av1'})
-SKIP_CODECS  = frozenset({'gif', 'png', 'unknown', 'mjpeg'})
-CQ           = os.getenv('FFMPEG_CQ', '19')
-PRESET       = os.getenv('FFMPEG_PRESET', 'fast')
-DRY_RUN      = os.getenv('DRY_RUN', 'false').lower() == 'true'
-WORKERS      = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
+MEDIA_ROOT         = Path('/media')
+SETTINGS_PATH      = Path('/data/settings.json')
+IDEAL_CODECS       = frozenset({'hevc', 'av1'})
+SKIP_CODECS        = frozenset({'gif', 'png', 'unknown', 'mjpeg'})
+CQ                 = os.getenv('FFMPEG_CQ', '28')
+PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
+DRY_RUN            = os.getenv('DRY_RUN', 'false').lower() == 'true'
+WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
+BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 
 VIDEO_EXTENSIONS = frozenset({
     '.mkv', '.mp4', '.avi', '.wmv', '.mov', '.flv',
@@ -39,6 +41,47 @@ state: dict = {
 }
 _stop = threading.Event()
 _lock = threading.Lock()
+
+
+# ── Settings persistence ──────────────────────────────────────────────────────
+
+def load_settings():
+    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H
+    try:
+        data = json.loads(SETTINGS_PATH.read_text())
+        cq = int(data.get('cq', CQ))
+        if 1 <= cq <= 51:
+            CQ = str(cq)
+        if data.get('preset') in {
+            'ultrafast', 'superfast', 'veryfast', 'faster', 'fast',
+            'medium', 'slow', 'slower', 'veryslow',
+            'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7',
+        }:
+            PRESET = data['preset']
+        DRY_RUN           = bool(data.get('dry_run', DRY_RUN))
+        WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
+        BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
+        log.info(
+            f'Settings loaded: CQ={CQ} preset={PRESET} dry_run={DRY_RUN} '
+            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H}'
+        )
+    except FileNotFoundError:
+        pass
+    except Exception:
+        log.warning('Could not load settings.json — using defaults')
+
+
+def save_settings():
+    try:
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = SETTINGS_PATH.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps({
+            'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
+            'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
+        }))
+        tmp.replace(SETTINGS_PATH)
+    except Exception:
+        log.warning('Could not save settings.json')
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,18 +121,22 @@ def _parse_time(s: str) -> float:
 def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> int:
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
     time_re = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
-    for line in proc.stderr:
-        if _stop.is_set():
+    try:
+        for line in proc.stderr:
+            if _stop.is_set():
+                proc.terminate()
+                proc.wait()
+                return -1
+            m = time_re.search(line)
+            if m and duration > 0:
+                progress = min(_parse_time(m.group(1)) / duration * 100, 99.9)
+                with _lock:
+                    if state['workers'].get(slot_id):
+                        state['workers'][slot_id]['progress'] = progress
+    finally:
+        if proc.poll() is None:
             proc.terminate()
-            proc.wait()
-            return -1
-        m = time_re.search(line)
-        if m and duration > 0:
-            progress = min(_parse_time(m.group(1)) / duration * 100, 99.9)
-            with _lock:
-                if state['workers'].get(slot_id):
-                    state['workers'][slot_id]['progress'] = progress
-    proc.wait()
+        proc.wait()
     return proc.returncode
 
 
@@ -114,6 +161,7 @@ def cleanup_leftover_temps():
 
 def transcode_file(path: Path, db, slot_id: int) -> str:
     from app.database import record_start, record_finish, cache_get, cache_set
+    _cq, _preset = CQ, PRESET  # snapshot globals; they may change while we transcode
 
     try:
         st = path.stat()
@@ -130,9 +178,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             # 'original' = was already HEVC when first scanned, never our encode → always skip
             # CQ matches current setting → skip
             # '' (legacy) or different CQ → re-transcode
-            if cached_cq == 'original' or cached_cq == CQ:
+            if cached_cq == 'original' or cached_cq == _cq:
                 return 'skipped'
-            log.info(f'Re-transcode {path.name}: cached CQ={repr(cached_cq)} current={CQ}')
+            log.info(f'Re-transcode {path.name}: cached CQ={repr(cached_cq)} current={_cq}')
         info = {'codec': codec, 'duration': cached['duration']}
         if info['duration'] == 0:
             full = probe(path)
@@ -157,13 +205,13 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
     mount    = path.parts[2] if len(path.parts) > 2 else ''
     src_size = st.st_size
 
-    log.info(f'[W{slot_id}] TRANSCODE  {path.name}  [{codec}→hevc_nvenc CQ{CQ}]  {src_size / 1e6:.0f}MB')
+    log.info(f'[W{slot_id}] TRANSCODE  {path.name}  [{codec}→hevc_nvenc CQ{_cq}]  {src_size / 1e6:.0f}MB')
 
     if DRY_RUN:
         log.info(f'[W{slot_id}]   DRY_RUN – skip')
         return 'skipped'
 
-    job_id  = record_start(db, str(path), path.name, codec, src_size, mount, cq=CQ)
+    job_id  = record_start(db, str(path), path.name, codec, src_size, mount, cq=_cq)
     started = datetime.now(timezone.utc)
 
     with _lock:
@@ -178,7 +226,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         'ffmpeg', '-y',
         '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
         '-i', str(path),
-        '-c:v', 'hevc_nvenc', '-cq', CQ, '-preset', PRESET,
+        '-c:v', 'hevc_nvenc', '-cq', _cq, '-preset', _preset,
         '-c:a', 'copy', '-c:s', 'copy',
     ]
     if out_ext == '.mp4':
@@ -234,7 +282,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
 
     try:
         dest_st = dest.stat()
-        cache_set(db, str(dest), dest_st.st_size, dest_st.st_mtime, 'hevc', out_info['duration'], cq=CQ)
+        cache_set(db, str(dest), dest_st.st_size, dest_st.st_mtime, 'hevc', out_info['duration'], cq=_cq)
     except OSError:
         pass
 
@@ -247,15 +295,14 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
 # ── Scan loop ─────────────────────────────────────────────────────────────────
 
 def run_scan(db):
-    if state['running']:
-        log.warning('Scan already running')
-        return
-
-    _stop.clear()
     with _lock:
+        if state['running']:
+            log.warning('Scan already running')
+            return
         state['running'] = True
         state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
         state['workers'] = {i: None for i in range(WORKERS)}
+    _stop.clear()
 
     log.info(f'=== Scan started ({WORKERS} workers) ===')
 
@@ -270,7 +317,11 @@ def run_scan(db):
             if _stop.is_set():
                 file_q.task_done()
                 continue
-            result = transcode_file(path, db, slot_id)
+            try:
+                result = transcode_file(path, db, slot_id)
+            except Exception:
+                log.exception(f'[W{slot_id}] unhandled error on {path}')
+                result = 'failed'
             with _lock:
                 state['session'][result] = state['session'].get(result, 0) + 1
             file_q.task_done()

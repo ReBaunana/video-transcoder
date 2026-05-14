@@ -995,6 +995,35 @@
     .adv-item.danger { color: rgba(248,113,113,.75); }
     .adv-item.danger:hover { background: var(--red-bg); color: var(--red); }
 
+    .adv-section {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .6rem;
+      padding: .5rem .9rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .adv-section-label {
+      font-size: .72rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .adv-select {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .72rem;
+      font-weight: 500;
+      padding: .22rem .45rem;
+      outline: none;
+      cursor: pointer;
+    }
+    .adv-select:focus { border-color: var(--accent); }
+    .adv-select option { background: #12122a; }
+
     /* ─── Job filter pills ──────────────────────────── */
     .filter-pills { display: flex; gap: .3rem; flex-wrap: wrap; }
 
@@ -1129,9 +1158,23 @@
         </svg>
       </button>
       <div class="adv-menu">
+        <div class="adv-section">
+          <span class="adv-section-label">Auto-backup</span>
+          <select id="backupIntervalSel" class="adv-select" onchange="setBackupInterval(this.value)">
+            <option value="0"   {{ 'selected' if backup_interval_h == 0   else '' }}>Off</option>
+            <option value="6"   {{ 'selected' if backup_interval_h == 6   else '' }}>Every 6 h</option>
+            <option value="12"  {{ 'selected' if backup_interval_h == 12  else '' }}>Every 12 h</option>
+            <option value="24"  {{ 'selected' if backup_interval_h == 24  else '' }}>Daily</option>
+            <option value="168" {{ 'selected' if backup_interval_h == 168 else '' }}>Weekly</option>
+          </select>
+        </div>
         <button class="adv-item" onclick="doBackup(); toggleAdv()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Backup DB
+          Backup Now
+        </button>
+        <button class="adv-item" onclick="cleanJobs(); toggleAdv()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+          Clean Jobs
         </button>
         <button class="adv-item danger" onclick="resetDB(); toggleAdv()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -1456,7 +1499,6 @@
       const r = await fetch(url, { method: 'POST' });
       const d = await r.json();
       if (d.msg) alert(d.msg);
-      location.reload();
     } catch (e) {
       alert('Request failed: ' + e.message);
     }
@@ -1472,6 +1514,18 @@
     btn.classList.add('fp-active');
     if (status === 'done')   btn.classList.add('fp-done');
     if (status === 'failed') btn.classList.add('fp-failed');
+  }
+
+  async function cleanJobs() {
+    if (!confirm('Clear job history?\n\nFile cache is kept — already-transcoded files will not be re-processed.')) return;
+    try {
+      const r = await fetch('/api/clean-jobs', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) { alert(d.msg || 'Failed'); return; }
+      window.location.href = '/?_=' + Date.now();
+    } catch (e) {
+      alert('Failed: ' + e.message);
+    }
   }
 
   async function resetDB() {
@@ -1534,6 +1588,16 @@
         btn.classList.toggle('active', d.dry_run);
         btn.textContent = d.dry_run ? 'ON' : 'OFF';
       }
+    } catch (_) {}
+  }
+
+  async function setBackupInterval(h) {
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backup_interval_h: parseInt(h) }),
+      });
     } catch (_) {}
   }
 
@@ -1615,8 +1679,8 @@
 
       // Worker progress bars (only meaningful while running)
       if (running) {
-        for (let i = 0; i < {{ workers_count }}; i++) {
-          const w   = workers[String(i)];
+        for (const i of Object.keys(d.state.workers)) {
+          const w   = workers[i];
           const bar  = document.getElementById('wbar-'  + i);
           const glow = document.getElementById('wglow-' + i);
           const pct  = document.getElementById('wpct-'  + i);
