@@ -1609,6 +1609,19 @@
       <div style="height:1px;background:var(--border);"></div>
 
       <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Output Container</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The output container matches the source where possible — Plex and Jellyfin don't need to rescan because the file stays in the same folder with the same name.<br><br>
+          <code class="modal-code">.mp4 .m4v .mov</code> &rarr; <code class="modal-code">.mp4</code><br>
+          <code class="modal-code">.mkv</code> &rarr; <code class="modal-code">.mkv</code><br>
+          <code class="modal-code">.avi .wmv .flv .ts .mpg .mpeg .divx .webm</code> &rarr; <code class="modal-code">.mkv</code><br><br>
+          The codec is always <strong style="color:var(--text)">H.265 / HEVC</strong>. Audio and subtitle tracks are copied without re-encoding.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Reset DB vs Clean Jobs</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
           <strong style="color:var(--text)">Clean Jobs</strong> — deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
