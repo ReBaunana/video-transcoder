@@ -264,6 +264,16 @@
       border-color: rgba(248,113,113,.4);
       box-shadow: 0 0 14px rgba(248,113,113,.12);
     }
+    .btn-soft-stop {
+      background: rgba(251,191,36,.1);
+      border-color: rgba(251,191,36,.22);
+      color: var(--yellow);
+    }
+    .btn-soft-stop:hover {
+      background: rgba(251,191,36,.18);
+      border-color: rgba(251,191,36,.4);
+      box-shadow: 0 0 14px rgba(251,191,36,.12);
+    }
 
     /* ─── Main ───────────────────────────────────── */
     main {
@@ -1342,6 +1352,10 @@
       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       Run Now
     </button>
+    <button class="btn btn-soft-stop" id="btnSoftStop" onclick="apiPost('/api/soft-stop')"
+      style="{{ 'display:none' if not state.running or state.stopping else '' }}">
+      Finish &amp; Stop
+    </button>
     <button class="btn btn-stop" onclick="apiPost('/api/stop')">
       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
       Stop
@@ -1982,7 +1996,7 @@
 
   /* ── Generic POST (Run / Stop) ────────────────────────────── */
   async function apiPost(url) {
-    const btn = document.querySelector(url === '/api/stop' ? '.btn-stop' : '.btn-run');
+    const btn = document.querySelector(url === '/api/stop' ? '.btn-stop' : url === '/api/soft-stop' ? '.btn-soft-stop' : '.btn-run');
     if (btn) btn.classList.add('btn-working');
     try {
       const r = await fetch(url, { method: 'POST' });
@@ -2183,7 +2197,11 @@
       const dot  = document.getElementById('statusDot');
       if (pill) pill.className = 'status-pill' + (running ? ' running' : '');
       if (dot)  dot.className  = 'dot '         + (running ? 'dot-on'  : 'dot-off');
-      _txt('statusText', running ? 'Running'
+      const stopping = !!(d.state.stopping);
+      const btnSS = document.getElementById('btnSoftStop');
+      if (btnSS) btnSS.style.display = (running && !stopping) ? '' : 'none';
+      _txt('statusText', running
+        ? (stopping ? 'Finishing…' : 'Running')
         : _schedHour >= 0
           ? 'Idle · next ' + String(_schedHour).padStart(2,'0') + ':00'
           : 'Idle · no schedule');

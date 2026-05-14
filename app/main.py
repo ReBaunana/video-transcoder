@@ -219,6 +219,16 @@ async def api_stop():
     return JSONResponse({'ok': True, 'msg': 'Stop signal sent — finishing current file'})
 
 
+@app.post('/api/soft-stop')
+async def api_soft_stop():
+    if not transcoder.state['running']:
+        return JSONResponse({'ok': False, 'msg': 'Not running'})
+    if transcoder.state['stopping']:
+        return JSONResponse({'ok': False, 'msg': 'Already finishing up'})
+    transcoder.stop_scan_soft()
+    return JSONResponse({'ok': True, 'msg': 'Finishing current files, then stopping'})
+
+
 @app.post('/api/workers')
 async def api_set_workers(request: Request):
     body = await request.json()

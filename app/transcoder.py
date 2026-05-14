@@ -38,12 +38,14 @@ OUTPUT_EXT = {
 
 state: dict = {
     'running':       False,
+    'stopping':      False,
     'workers':       {},   # {slot_id: None | {'file', 'codec', 'progress', 'started_at'}}
     'current_mount': None,
     'session':       {'done': 0, 'failed': 0, 'skipped': 0},
 }
-_stop = threading.Event()
-_lock = threading.Lock()
+_stop      = threading.Event()
+_soft_stop = threading.Event()
+_lock      = threading.Lock()
 
 
 # ── Settings persistence ──────────────────────────────────────────────────────
@@ -328,10 +330,12 @@ def run_scan(db):
         if state['running']:
             log.warning('Scan already running')
             return
-        state['running'] = True
-        state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
-        state['workers'] = {i: None for i in range(WORKERS)}
+        state['running']  = True
+        state['stopping'] = False
+        state['session']  = {'done': 0, 'failed': 0, 'skipped': 0}
+        state['workers']  = {i: None for i in range(WORKERS)}
     _stop.clear()
+    _soft_stop.clear()
 
     log.info(f'=== Scan started ({WORKERS} workers) ===')
 
@@ -377,11 +381,14 @@ def run_scan(db):
 
             for root, dirs, files in os.walk(mount, topdown=True):
                 dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
-                if _stop.is_set():
+                if _stop.is_set() or _soft_stop.is_set():
                     log.info('Stopped by request')
                     return
                 for name in sorted(files):
                     if _stop.is_set():
+                        return
+                    if _soft_stop.is_set():
+                        log.info('Soft stop — finishing current files')
                         return
                     if '.transcoding.' in name:
                         continue
@@ -399,6 +406,7 @@ def run_scan(db):
         with _lock:
             state.update({
                 'running':       False,
+                'stopping':      False,
                 'workers':       {},
                 'current_mount': None,
             })
@@ -412,3 +420,9 @@ def start_scan(db):
 
 def stop_scan():
     _stop.set()
+
+
+def stop_scan_soft():
+    _soft_stop.set()
+    with _lock:
+        state['stopping'] = True
