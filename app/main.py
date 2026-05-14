@@ -52,14 +52,13 @@ def _start_scheduler():
 
 @app.get('/', response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse('index.html', {
-        'request':      request,
-        'state':        transcoder.state,
-        'stats':        get_stats(db),
-        'codec_stats':  get_codec_stats(db),
-        'recent':       get_recent_jobs(db, 50),
+    return templates.TemplateResponse(request, 'index.html', context={
+        'state':         transcoder.state,
+        'stats':         get_stats(db),
+        'codec_stats':   get_codec_stats(db),
+        'recent':        get_recent_jobs(db, 50),
         'schedule_hour': SCHEDULE_HOUR,
-        'cq':           transcoder.CQ,
+        'cq':            transcoder.CQ,
     })
 
 
