@@ -189,8 +189,13 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
     if rc != 0 or not tmp.exists():
-        log.error(f'[W{slot_id}]   ffmpeg failed (rc={rc})')
         tmp.unlink(missing_ok=True)
+        if rc == -1:
+            record_finish(db, job_id, 'skipped', None, elapsed, 'stopped')
+            with _lock:
+                state['workers'][slot_id] = None
+            return 'skipped'
+        log.error(f'[W{slot_id}]   ffmpeg failed (rc={rc})')
         record_finish(db, job_id, 'failed', None, elapsed, f'ffmpeg exit {rc}')
         with _lock:
             state['workers'][slot_id] = None
@@ -262,6 +267,9 @@ def run_scan(db):
             if path is None:
                 file_q.task_done()
                 break
+            if _stop.is_set():
+                file_q.task_done()
+                continue
             result = transcode_file(path, db, slot_id)
             with _lock:
                 state['session'][result] = state['session'].get(result, 0) + 1

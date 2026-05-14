@@ -137,3 +137,20 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
         FROM jobs ORDER BY id DESC LIMIT ?
     """, (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+BACKUP_DIR = Path('/data/backups')
+
+def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR) -> Path:
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    dest = backup_dir / f'transcoder_{ts}.db'
+    bconn = sqlite3.connect(str(dest))
+    try:
+        conn.backup(bconn)
+    finally:
+        bconn.close()
+    # Keep only last 7 daily backups
+    for old in sorted(backup_dir.glob('transcoder_*.db'))[:-7]:
+        old.unlink(missing_ok=True)
+    return dest

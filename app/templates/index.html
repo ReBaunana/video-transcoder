@@ -789,6 +789,113 @@
     @media (max-width: 400px) {
       .logo span { display: none; }
     }
+
+    /* ─── Settings strip ────────────────────────────── */
+    .settings-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+      margin-bottom: 1.4rem;
+    }
+
+    .setting-card {
+      display: flex;
+      flex-direction: column;
+      gap: .28rem;
+      padding: .8rem 1.1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .setting-label {
+      font-size: .67rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .setting-input {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .9rem;
+      font-weight: 700;
+      padding: .28rem .55rem;
+      width: 72px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .setting-input:focus { border-color: var(--accent); }
+
+    .setting-select {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .82rem;
+      font-weight: 500;
+      padding: .28rem .55rem;
+      outline: none;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .setting-select:focus { border-color: var(--accent); }
+    .setting-select option { background: #12122a; }
+
+    .setting-hint {
+      font-size: .66rem;
+      color: var(--text-dim);
+    }
+
+    .toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .38rem;
+      padding: .26rem .65rem;
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all .15s;
+    }
+    .toggle-btn::before {
+      content: '';
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .toggle-btn.active {
+      background: var(--red-bg);
+      border-color: rgba(248,113,113,.3);
+      color: var(--red);
+    }
+    .toggle-btn.active::before {
+      background: var(--red);
+      box-shadow: 0 0 5px var(--red);
+    }
+
+    .btn-backup {
+      background: rgba(108,142,245,.08);
+      border-color: rgba(108,142,245,.2);
+      color: var(--accent);
+    }
+    .btn-backup:hover {
+      background: rgba(108,142,245,.15);
+      border-color: rgba(108,142,245,.35);
+    }
   </style>
 </head>
 <body>
@@ -822,7 +929,7 @@
         <rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/><rect x="16" y="3" width="6" height="18" rx="1"/>
       </svg>
       <select id="workersSelect" onchange="setWorkers(this.value)" title="Parallel workers">
-        {% for n in [1,2,3,4] %}
+        {% for n in [1,2,3,4,5,6,7,8] %}
         <option value="{{ n }}" {{ 'selected' if n == workers_count else '' }}>{{ n }}×</option>
         {% endfor %}
       </select>
@@ -936,6 +1043,36 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  <!-- ── Settings ─────────────────────────────────────────── -->
+  <div class="settings-strip">
+    <div class="setting-card">
+      <div class="setting-label">Quality (CQ)</div>
+      <input type="number" id="cfgCQ" value="{{ cq }}" min="1" max="51"
+             class="setting-input" onchange="saveConfig()">
+      <div class="setting-hint">Lower = better / larger</div>
+    </div>
+    <div class="setting-card">
+      <div class="setting-label">Preset</div>
+      <select id="cfgPreset" class="setting-select" onchange="saveConfig()">
+        {% for p in ['ultrafast','superfast','veryfast','faster','fast','medium','slow'] %}
+        <option value="{{ p }}" {{ 'selected' if p == preset else '' }}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <div class="setting-hint">Speed vs compression</div>
+    </div>
+    <div class="setting-card">
+      <div class="setting-label">Dry Run</div>
+      <button id="cfgDryRun" class="toggle-btn {{ 'active' if dry_run else '' }}"
+              onclick="toggleDryRun()">{{ 'ON' if dry_run else 'OFF' }}</button>
+      <div class="setting-hint">Simulate without encoding</div>
+    </div>
+    <div class="setting-card">
+      <div class="setting-label">Backup</div>
+      <button class="btn btn-backup" onclick="doBackup()">Backup Now</button>
+      <div class="setting-hint" id="lastBackup">{{ last_backup or 'No backup yet' }}</div>
+    </div>
+  </div>
 
   <!-- ── Workers (running only) ───────────────────────────── -->
   {% if state.running %}
@@ -1078,6 +1215,44 @@
     } catch (e) {
       alert('Request failed: ' + e.message);
     }
+  }
+
+  async function saveConfig() {
+    try {
+      const cq     = parseInt(document.getElementById('cfgCQ').value);
+      const preset = document.getElementById('cfgPreset').value;
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cq, preset }),
+      });
+    } catch (_) {}
+  }
+
+  async function toggleDryRun() {
+    const btn = document.getElementById('cfgDryRun');
+    const isDry = btn.classList.contains('active');
+    try {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dry_run: !isDry }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        btn.classList.toggle('active', d.dry_run);
+        btn.textContent = d.dry_run ? 'ON' : 'OFF';
+      }
+    } catch (_) {}
+  }
+
+  async function doBackup() {
+    try {
+      const r = await fetch('/api/backup', { method: 'POST' });
+      const d = await r.json();
+      const hint = document.getElementById('lastBackup');
+      if (d.ok && hint) hint.textContent = d.at || 'just now';
+    } catch (_) {}
   }
 
   async function setWorkers(n) {
