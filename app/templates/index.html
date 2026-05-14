@@ -1237,7 +1237,9 @@
 </main>
 
 <!-- ═══ VERSION BADGE ══════════════════════════════════════ -->
-<a id="versionBadge" class="version-badge" title="Current version">
+<a id="versionBadge" class="version-badge"
+   href="https://github.com/ReBaunana/video-transcoder/releases"
+   target="_blank" rel="noopener" title="v{{ version }}">
   <span class="vbadge-dot"></span>
   <span id="versionLabel">v{{ version }}</span>
 </a>
@@ -1374,11 +1376,10 @@
         const label = document.getElementById('versionLabel');
         if (badge) {
           badge.classList.add('update-available');
-          badge.href  = d.html_url || '#';
-          badge.target = '_blank';
+          badge.href  = 'https://github.com/ReBaunana/video-transcoder/releases/latest';
           badge.title = `Update available: v${latest}`;
         }
-        if (label) label.textContent = `v${cur} → v${latest}`;
+        if (label) label.textContent = `! v${cur}`;
       }
     } catch (_) {}
   })();
