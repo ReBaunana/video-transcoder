@@ -226,9 +226,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         f'  ({dest_size / src_size * 100:.0f}%)  {elapsed:.0f}s'
     )
 
+    tmp.replace(dest)           # atomic rename first — dest is safe
     if dest != path:
-        path.unlink()
-    tmp.replace(dest)
+        path.unlink(missing_ok=True)  # only then remove the original
 
     record_finish(db, job_id, 'done', dest_size, elapsed)
 

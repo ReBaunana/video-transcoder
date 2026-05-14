@@ -35,6 +35,12 @@ last_backup_at: str | None = None
 async def startup():
     global db, last_backup_at
     db = db_init()
+    # Mark jobs left as 'running' by a previous crash
+    db.execute(
+        "UPDATE jobs SET status='failed', error='process killed', finished_at=? WHERE status='running'",
+        (datetime.now().isoformat(),),
+    )
+    db.commit()
     transcoder.cleanup_leftover_temps()
     if BACKUP_DIR.exists():
         backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
