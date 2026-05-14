@@ -347,7 +347,7 @@ def run_scan(db):
             if path is None:
                 file_q.task_done()
                 break
-            if _stop.is_set():
+            if _stop.is_set() or _soft_stop.is_set():
                 file_q.task_done()
                 continue
             try:
