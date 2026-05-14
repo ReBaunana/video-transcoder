@@ -17,21 +17,33 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at   TEXT,
     finished_at  TEXT,
     status       TEXT CHECK(status IN ('running','done','failed','skipped')),
-    error        TEXT
+    error        TEXT,
+    cq           TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_started ON jobs(started_at);
 
 -- Avoids re-running ffprobe on unchanged files between scan runs.
 -- Key: path + size + mtime. On a cache hit the probe is skipped entirely.
+-- cq: CQ value used when WE transcoded this file, 'original' if it was
+--     already HEVC on first scan, '' for legacy entries (will be re-transcoded).
 CREATE TABLE IF NOT EXISTS file_cache (
     path     TEXT    PRIMARY KEY,
     size     INTEGER NOT NULL,
     mtime    REAL    NOT NULL,
     codec    TEXT    NOT NULL,
-    duration REAL    NOT NULL DEFAULT 0
+    duration REAL    NOT NULL DEFAULT 0,
+    cq       TEXT    NOT NULL DEFAULT ''
 );
 """
+
+def _migrate(conn: sqlite3.Connection):
+    for table, col in [('file_cache', 'cq'), ('jobs', 'cq')]:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN cq TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    conn.commit()
 
 
 def init(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -40,16 +52,17 @@ def init(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     conn.commit()
+    _migrate(conn)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
-def record_start(conn, path, filename, src_codec, src_size, mount) -> int:
+def record_start(conn, path, filename, src_codec, src_size, mount, cq: str = '') -> int:
     cur = conn.execute(
-        "INSERT INTO jobs (path,filename,mount,src_codec,src_size,started_at,status) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO jobs (path,filename,mount,src_codec,src_size,started_at,status,cq) VALUES (?,?,?,?,?,?,?,?)",
         (path, filename, mount, src_codec, src_size,
-         datetime.now(timezone.utc).isoformat(), 'running'),
+         datetime.now(timezone.utc).isoformat(), 'running', cq),
     )
     conn.commit()
     return cur.lastrowid
@@ -88,16 +101,17 @@ def get_codec_stats(conn) -> list:
 
 def cache_get(conn, path: str, size: int, mtime: float) -> dict | None:
     row = conn.execute(
-        "SELECT codec, duration FROM file_cache WHERE path=? AND size=? AND mtime=?",
+        "SELECT codec, duration, cq FROM file_cache WHERE path=? AND size=? AND mtime=?",
         (path, size, mtime),
     ).fetchone()
     return dict(row) if row else None
 
 
-def cache_set(conn, path: str, size: int, mtime: float, codec: str, duration: float = 0.0):
+def cache_set(conn, path: str, size: int, mtime: float, codec: str,
+              duration: float = 0.0, cq: str = ''):
     conn.execute(
-        "INSERT OR REPLACE INTO file_cache (path,size,mtime,codec,duration) VALUES (?,?,?,?,?)",
-        (path, size, mtime, codec, duration),
+        "INSERT OR REPLACE INTO file_cache (path,size,mtime,codec,duration,cq) VALUES (?,?,?,?,?,?)",
+        (path, size, mtime, codec, duration, cq),
     )
     conn.commit()
 

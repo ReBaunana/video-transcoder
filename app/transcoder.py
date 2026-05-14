@@ -123,8 +123,16 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
     cached = cache_get(db, str(path), st.st_size, st.st_mtime)
     if cached:
         codec = cached['codec']
-        if codec in IDEAL_CODECS or codec in SKIP_CODECS:
+        if codec in SKIP_CODECS:
             return 'skipped'
+        if codec in IDEAL_CODECS:
+            cached_cq = cached.get('cq', '')
+            # 'original' = was already HEVC when first scanned, never our encode → always skip
+            # CQ matches current setting → skip
+            # '' (legacy) or different CQ → re-transcode
+            if cached_cq == 'original' or cached_cq == CQ:
+                return 'skipped'
+            log.info(f'Re-transcode {path.name}: cached CQ={repr(cached_cq)} current={CQ}')
         info = {'codec': codec, 'duration': cached['duration']}
         if info['duration'] == 0:
             full = probe(path)
@@ -135,8 +143,12 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             log.warning(f'probe failed: {path}')
             return 'failed'
         codec = info['codec']
-        cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'])
-        if codec in IDEAL_CODECS or codec in SKIP_CODECS:
+        if codec in SKIP_CODECS:
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'])
+            return 'skipped'
+        if codec in IDEAL_CODECS:
+            # Mark as original HEVC — not our encode, always skip in future
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
             return 'skipped'
 
     out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
@@ -151,7 +163,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         log.info(f'[W{slot_id}]   DRY_RUN – skip')
         return 'skipped'
 
-    job_id  = record_start(db, str(path), path.name, codec, src_size, mount)
+    job_id  = record_start(db, str(path), path.name, codec, src_size, mount, cq=CQ)
     started = datetime.now(timezone.utc)
 
     with _lock:
@@ -217,7 +229,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
 
     try:
         dest_st = dest.stat()
-        cache_set(db, str(dest), dest_st.st_size, dest_st.st_mtime, 'hevc', out_info['duration'])
+        cache_set(db, str(dest), dest_st.st_size, dest_st.st_mtime, 'hevc', out_info['duration'], cq=CQ)
     except OSError:
         pass
 
