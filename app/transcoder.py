@@ -20,6 +20,7 @@ DRY_RUN            = os.getenv('DRY_RUN', 'false').lower() == 'true'
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
+SCHEDULE_HOUR      = int(os.getenv('SCHEDULE_HOUR', '3'))       # -1 = disabled
 
 VIDEO_EXTENSIONS = frozenset({
     '.mkv', '.mp4', '.avi', '.wmv', '.mov', '.flv',
@@ -47,7 +48,7 @@ _lock = threading.Lock()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP
+    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -63,9 +64,12 @@ def load_settings():
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
+        if 'schedule_hour' in data:
+            SCHEDULE_HOUR = max(-1, min(int(data['schedule_hour']), 23))
         log.info(
             f'Settings loaded: CQ={CQ} preset={PRESET} dry_run={DRY_RUN} '
-            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H} backup_keep={BACKUP_KEEP}'
+            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H} backup_keep={BACKUP_KEEP} '
+            f'schedule_hour={SCHEDULE_HOUR}'
         )
     except FileNotFoundError:
         pass
@@ -80,7 +84,7 @@ def save_settings():
         tmp.write_text(json.dumps({
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
             'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
-            'backup_keep': BACKUP_KEEP,
+            'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
         }))
         tmp.replace(SETTINGS_PATH)
     except Exception:

@@ -25,7 +25,6 @@ app       = FastAPI(title='Video Transcoder')
 templates = Jinja2Templates(directory='app/templates')
 db        = None
 
-SCHEDULE_HOUR = int(os.getenv('SCHEDULE_HOUR', '3'))
 APP_VERSION   = os.getenv('APP_VERSION', 'dev')
 
 last_backup_at: str | None = None
@@ -79,7 +78,7 @@ def _start_scheduler():
                 except Exception as e:
                     log.error(f'Backup failed: {e}')
 
-            if now.hour == SCHEDULE_HOUR and now.minute == 0:
+            if transcoder.SCHEDULE_HOUR >= 0 and now.hour == transcoder.SCHEDULE_HOUR and now.minute == 0:
                 if not transcoder.state['running']:
                     log.info('Scheduled scan starting')
                     transcoder.start_scan(db)
@@ -107,7 +106,7 @@ async def dashboard(request: Request):
             'codec_stats':        get_codec_stats(db),
             'recent':             get_recent_jobs(db, 50),
             'mounts':             mounts,
-            'schedule_hour':      SCHEDULE_HOUR,
+            'schedule_hour':      transcoder.SCHEDULE_HOUR,
             'cq':                 transcoder.CQ,
             'preset':             transcoder.PRESET,
             'dry_run':            transcoder.DRY_RUN,
@@ -166,6 +165,7 @@ async def api_get_config():
         'workers':           transcoder.WORKERS,
         'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
         'backup_keep':       transcoder.BACKUP_KEEP,
+        'schedule_hour':     transcoder.SCHEDULE_HOUR,
     })
 
 
@@ -186,6 +186,8 @@ async def api_set_config(request: Request):
         transcoder.BACKUP_INTERVAL_H = max(0, int(body['backup_interval_h']))
     if 'backup_keep' in body:
         transcoder.BACKUP_KEEP = max(1, min(int(body['backup_keep']), 30))
+    if 'schedule_hour' in body:
+        transcoder.SCHEDULE_HOUR = max(-1, min(int(body['schedule_hour']), 23))
     transcoder.save_settings()
     return JSONResponse({
         'ok':                True,
@@ -195,6 +197,7 @@ async def api_set_config(request: Request):
         'workers':           transcoder.WORKERS,
         'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
         'backup_keep':       transcoder.BACKUP_KEEP,
+        'schedule_hour':     transcoder.SCHEDULE_HOUR,
     })
 
 

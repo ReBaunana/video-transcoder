@@ -1184,7 +1184,7 @@
 
     <div class="status-pill {{ 'running' if state.running else '' }}" id="statusPill">
       <span class="dot {{ 'dot-on' if state.running else 'dot-off' }}" id="statusDot"></span>
-      <span id="statusText">{% if state.running %}Running{% else %}Idle &nbsp;·&nbsp; next {{ '%02d:00'|format(schedule_hour) }}{% endif %}</span>
+      <span id="statusText">{% if state.running %}Running{% elif schedule_hour >= 0 %}Idle &nbsp;·&nbsp; next {{ '%02d:00'|format(schedule_hour) }}{% else %}Idle &nbsp;·&nbsp; no schedule{% endif %}</span>
     </div>
 
     {% set active_workers = state.workers.values() | select | list | length %}
@@ -1230,10 +1230,19 @@
         </svg>
       </button>
       <div class="adv-menu">
+        <button class="adv-item" onclick="toggleAdv(); openScanModal()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Scan Schedule
+        </button>
         <button class="adv-item" onclick="toggleAdv(); openBackupModal()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Backup Settings
         </button>
+        <button class="adv-item" onclick="toggleAdv(); openHelpModal()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Help / About
+        </button>
+        <div style="height:1px;background:var(--border);margin:.15rem 0;"></div>
         <button class="adv-item" onclick="cleanJobs()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
           Clean Jobs
@@ -1540,6 +1549,118 @@
   </div><!-- /grid2 -->
 </main>
 
+<!-- ═══ HELP MODAL ══════════════════════════════════════════ -->
+<div id="helpModal" class="modal-backdrop" onclick="if(event.target===this)closeHelpModal()">
+  <div class="modal" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
+    <div class="modal-header">
+      <span class="panel-title">Help &amp; Settings Guide</span>
+      <button class="modal-close" onclick="closeHelpModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" style="gap:1.1rem;max-height:72vh;overflow-y:auto;">
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">What this does</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Scans all folders under <code class="modal-code">/media</code>, finds video files not yet in H.265, and re-encodes them using your NVIDIA GPU (NVENC). The original file is replaced in-place — Plex and Jellyfin don't need to rescan. Already-processed files are cached and skipped on future scans.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">CQ — Constant Quality</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Controls quality vs. file size. <strong style="color:var(--text)">Lower = better quality, larger file.</strong><br><br>
+          <span style="color:var(--red)">15–22</span> &nbsp;Near-lossless — file can be <em>bigger</em> than source<br>
+          <span style="color:var(--yellow)">23–25</span> &nbsp;High quality, 20–40% smaller<br>
+          <span style="color:var(--green)">26–28</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> — good quality, 40–60% smaller<br>
+          <span style="color:var(--yellow)">29–32</span> &nbsp;Slight quality loss, 55–70% smaller<br>
+          <span style="color:var(--red)">33+&nbsp;&nbsp;</span> &nbsp;Noticeable artifacts on film content<br><br>
+          If you change CQ, files transcoded at a different CQ will be re-encoded on the next scan.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Preset</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Controls how hard the encoder searches for compression. Unlike software codecs, NVENC is fixed-function hardware — the quality difference between <code class="modal-code">fast</code> and <code class="modal-code">slow</code> is small.<br><br>
+          <span style="color:var(--green)">fast</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Best throughput, minimal quality difference — <strong style="color:var(--text)">recommended</strong><br>
+          <span style="color:var(--text-muted)">medium</span> &nbsp;5–10% smaller files, 2× slower<br>
+          <span style="color:var(--text-muted)">slow</span> &nbsp;&nbsp;&nbsp;&nbsp;Marginal gain, 3× slower — not worth it
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Parallel Jobs (Workers)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          How many files encode simultaneously. All streams share the single NVENC unit.<br><br>
+          <span style="color:var(--text-muted)">1–2×</span> &nbsp;NVENC underutilized<br>
+          <span style="color:var(--green)">3–4×</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> — ~80% NVENC load<br>
+          <span style="color:var(--text-muted)">5–6×</span> &nbsp;Good I/O overlap, high throughput<br>
+          <span style="color:var(--red)">7–8×</span> &nbsp;VRAM pressure risk on 4 GB GPUs<br><br>
+          CPU stays at ~10–20% regardless — all work is done on the GPU.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Reset DB vs Clean Jobs</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          <strong style="color:var(--text)">Clean Jobs</strong> — deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
+          <strong style="color:var(--text)">Reset DB</strong> — deletes job history <em>and</em> file cache. All files will be re-transcoded on the next scan as if they were never seen before.<br><br>
+          <span style="color:var(--green)">Settings (CQ, preset, workers) are never affected by either action.</span> They are stored separately in <code class="modal-code">/data/settings.json</code>.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Backup</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Backs up the SQLite database (job history + file cache) to <code class="modal-code">/data/backups/</code>. Video files are not backed up.<br><br>
+          Configure interval and retention via <strong style="color:var(--text)">☰ → Backup Settings</strong>. Default: daily, keep last 7.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeHelpModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCAN SCHEDULE MODAL ═════════════════════════════════ -->
+<div id="scanModal" class="modal-backdrop" onclick="if(event.target===this)closeScanModal()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="panel-title">Scan Schedule</span>
+      <button class="modal-close" onclick="closeScanModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <span class="modal-label">Daily auto-scan at</span>
+        <select id="smHour" class="setting-select" onchange="saveScanSettings()">
+          <option value="-1" {{ 'selected' if schedule_hour < 0 else '' }}>Off</option>
+          {% for h in range(24) %}
+          <option value="{{ h }}" {{ 'selected' if h == schedule_hour else '' }}>{{ '%02d:00'|format(h) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="font-size:.77rem;color:var(--text-muted);line-height:1.6;padding:.1rem 0;">
+        Scans all <code class="modal-code">/media</code> subdirectories once per day at the configured time. Only files not yet in H.265 (or re-encoded at a different CQ) are processed.
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeScanModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ BACKUP MODAL ════════════════════════════════════════ -->
 <div id="backupModal" class="modal-backdrop" onclick="if(event.target===this)closeBackupModal()">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="backupModalTitle">
@@ -1597,10 +1718,18 @@
     if (w && !w.contains(e.target)) w.classList.remove('open');
   });
 
-  /* ── Backup modal ─────────────────────────────────────────── */
+  /* ── Modal helpers ────────────────────────────────────────── */
   function openBackupModal()  { document.getElementById('backupModal').classList.add('open'); }
   function closeBackupModal() { document.getElementById('backupModal').classList.remove('open'); }
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBackupModal(); });
+  function openHelpModal()    { document.getElementById('helpModal').classList.add('open'); }
+  function closeHelpModal()   { document.getElementById('helpModal').classList.remove('open'); }
+  function openScanModal()    { document.getElementById('scanModal').classList.add('open'); }
+  function closeScanModal()   { document.getElementById('scanModal').classList.remove('open'); }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeBackupModal(); closeHelpModal(); closeScanModal();
+    }
+  });
 
   async function saveBackupSettings() {
     const interval = parseInt(document.getElementById('bmInterval').value);
@@ -1611,6 +1740,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backup_interval_h: interval, backup_keep: keep }),
       });
+    } catch (_) {}
+  }
+
+  async function saveScanSettings() {
+    const hour = parseInt(document.getElementById('smHour').value);
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule_hour: hour }),
+      });
+      // Reload so the status pill next-scan time updates
+      window.location.href = '/?_=' + Date.now();
     } catch (_) {}
   }
 
@@ -1790,7 +1932,9 @@
       if (pill) pill.className = 'status-pill' + (running ? ' running' : '');
       if (dot)  dot.className  = 'dot '         + (running ? 'dot-on'  : 'dot-off');
       _txt('statusText', running ? 'Running'
-        : 'Idle · next ' + String(_schedHour).padStart(2,'0') + ':00');
+        : _schedHour >= 0
+          ? 'Idle · next ' + String(_schedHour).padStart(2,'0') + ':00'
+          : 'Idle · no schedule');
 
       // Header file count
       const workers  = d.state.workers || {};
