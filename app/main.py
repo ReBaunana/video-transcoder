@@ -152,7 +152,10 @@ def _read_net_mbps() -> tuple[float, float]:
         rx = tx = 0
         for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
             p = line.split()
-            if len(p) < 10 or p[0].rstrip(':') == 'lo':
+            if len(p) < 10:
+                continue
+            iface = p[0].rstrip(':')
+            if iface == 'lo' or iface.startswith(('docker', 'veth', 'br-', 'virbr')):
                 continue
             rx += int(p[1])
             tx += int(p[9])
