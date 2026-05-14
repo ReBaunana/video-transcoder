@@ -163,7 +163,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         }
 
     cmd = [
-        'ffmpeg', '-y', '-i', str(path),
+        'ffmpeg', '-y',
+        '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
+        '-i', str(path),
         '-c:v', 'hevc_nvenc', '-cq', CQ, '-preset', PRESET,
         '-c:a', 'copy', '-c:s', 'copy',
     ]
