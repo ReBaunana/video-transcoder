@@ -1155,6 +1155,50 @@
     }
     .has-tip:hover .tip { opacity: 1; }
 
+    /* ─── Toast ────────────────────────────────────────── */
+    #toastContainer {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      z-index: 600;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: .45rem;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      min-width: 240px;
+      max-width: 360px;
+      padding: .65rem 1rem;
+      background: var(--surface-3);
+      border: 1px solid rgba(251,191,36,.3);
+      border-left: 3px solid var(--yellow);
+      border-radius: var(--radius-sm);
+      font-size: .79rem;
+      line-height: 1.45;
+      color: var(--text);
+      box-shadow: 0 4px 24px rgba(0,0,0,.55);
+      pointer-events: auto;
+      animation: toast-in .22s ease-out both;
+    }
+    .toast.t-success { border-color: rgba(52,211,153,.3); border-left-color: var(--green); }
+    .toast.t-error   { border-color: rgba(248,113,113,.3); border-left-color: var(--red); }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(-110%); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateX(0); }
+      to   { opacity: 0; transform: translateX(-110%); }
+    }
+
+    .btn-stop.btn-working { opacity: .55; pointer-events: none; }
+    .btn-run.btn-working  { opacity: .55; pointer-events: none; }
+
     /* tooltip appearing below the trigger (e.g. sticky header) */
     .tip-below {
       bottom: auto;
@@ -1713,6 +1757,9 @@
   </div>
 </div>
 
+<!-- ═══ TOAST CONTAINER ═════════════════════════════════════ -->
+<div id="toastContainer"></div>
+
 <!-- ═══ VERSION BADGE ══════════════════════════════════════ -->
 <a id="versionBadge" class="version-badge"
    href="https://github.com/ReBaunana/video-transcoder/releases"
@@ -1782,14 +1829,35 @@
     } catch (_) {}
   }
 
-  /* ── Generic POST (Run / Stop — no reload, poller handles it) */
+  /* ── Toast ───────────────────────────────────────────────── */
+  function showToast(msg, type) {
+    const c = document.getElementById('toastContainer');
+    if (!c) return;
+    const el = document.createElement('div');
+    el.className = 'toast' + (type === 'success' ? ' t-success' : type === 'error' ? ' t-error' : '');
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => {
+      el.style.animation = 'toast-out .18s ease-in forwards';
+      setTimeout(() => el.remove(), 180);
+    }, 4000);
+  }
+
+  /* ── Generic POST (Run / Stop) ────────────────────────────── */
   async function apiPost(url) {
+    const btn = document.querySelector(url === '/api/stop' ? '.btn-stop' : '.btn-run');
+    if (btn) btn.classList.add('btn-working');
     try {
       const r = await fetch(url, { method: 'POST' });
       const d = await r.json();
-      if (d.msg) alert(d.msg);
+      if (d.msg) {
+        const type = !d.ok ? 'warn' : url === '/api/stop' ? 'info' : 'success';
+        showToast(d.msg, type);
+      }
     } catch (e) {
-      alert('Request failed: ' + e.message);
+      showToast('Request failed: ' + e.message, 'error');
+    } finally {
+      if (btn) btn.classList.remove('btn-working');
     }
   }
 
