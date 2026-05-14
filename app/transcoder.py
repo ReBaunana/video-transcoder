@@ -5,6 +5,7 @@ import queue as _queue
 import re
 import subprocess
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,26 +126,36 @@ def _parse_time(s: str) -> float:
         return 0.0
 
 
-def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> int:
+_NVENC_SESSION_LIMIT = 'OpenEncodeSessionEx failed'
+
+def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> tuple[int, str]:
+    """Return (returncode, stderr_tail).  rc=-1 means stopped by request."""
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
-    time_re = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
+    time_re    = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
+    noise_re   = re.compile(r'frame=|fps=|speed=|time=|bitrate=|size=')
+    stderr_tail: list[str] = []
     try:
         for line in proc.stderr:
             if _stop.is_set():
                 proc.terminate()
                 proc.wait()
-                return -1
+                return -1, ''
             m = time_re.search(line)
             if m and duration > 0:
                 progress = min(_parse_time(m.group(1)) / duration * 100, 99.9)
                 with _lock:
                     if state['workers'].get(slot_id):
                         state['workers'][slot_id]['progress'] = progress
+            stripped = line.strip()
+            if stripped and not noise_re.search(stripped):
+                stderr_tail.append(stripped)
+                if len(stderr_tail) > 8:
+                    stderr_tail.pop(0)
     finally:
         if proc.poll() is None:
             proc.terminate()
         proc.wait()
-    return proc.returncode
+    return proc.returncode, '\n'.join(stderr_tail)
 
 
 def get_mounts() -> list[str]:
@@ -240,8 +251,18 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         cmd += ['-movflags', '+faststart']
     cmd.append(str(tmp))
 
-    rc      = _run_ffmpeg(cmd, info['duration'], slot_id)
-    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
+    elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
+
+    # NVENC session limit hit — one retry after a short wait
+    if rc not in (0, -1) and _NVENC_SESSION_LIMIT in err:
+        log.warning(f'[W{slot_id}]   NVENC session limit — waiting 15 s then retrying')
+        time.sleep(15)
+        with _lock:
+            if state['workers'].get(slot_id):
+                state['workers'][slot_id]['progress'] = 0.0
+        rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
     if rc != 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
@@ -250,8 +271,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             with _lock:
                 state['workers'][slot_id] = None
             return 'skipped'
-        log.error(f'[W{slot_id}]   ffmpeg failed (rc={rc})')
-        record_finish(db, job_id, 'failed', None, elapsed, f'ffmpeg exit {rc}')
+        err_short = err.splitlines()[-1] if err else f'ffmpeg exit {rc}'
+        log.error(f'[W{slot_id}]   ffmpeg failed (rc={rc}): {err_short}')
+        record_finish(db, job_id, 'failed', None, elapsed, err_short[:200])
         with _lock:
             state['workers'][slot_id] = None
         return 'failed'
