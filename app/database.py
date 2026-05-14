@@ -133,7 +133,7 @@ def get_mount_stats(conn) -> list:
 
 def get_recent_jobs(conn, limit: int = 50) -> list:
     rows = conn.execute("""
-        SELECT id,filename,mount,src_codec,src_size,dest_size,elapsed_s,started_at,status,error
+        SELECT id,filename,mount,src_codec,src_size,dest_size,elapsed_s,started_at,status,error,cq
         FROM jobs ORDER BY id DESC LIMIT ?
     """, (limit,)).fetchall()
     return [dict(r) for r in rows]

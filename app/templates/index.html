@@ -1501,6 +1501,7 @@
               <th>File</th>
               <th>Mount</th>
               <th>Codec</th>
+              <th>CQ</th>
               <th>Before</th>
               <th>After</th>
               <th>Saved</th>
@@ -1514,6 +1515,7 @@
               <td class="td-file">{{ job.filename[:48] }}{% if job.filename | length > 48 %}&hellip;{% endif %}</td>
               <td class="td-dim">{{ job.mount or '—' }}</td>
               <td class="td-dim">{{ job.src_codec or '—' }}</td>
+              <td class="td-num">{{ job.cq or '—' }}</td>
               <td class="td-num">{{ '%.0f'|format((job.src_size or 0) / 1e6) }} MB</td>
               <td class="td-num">{% if job.dest_size %}{{ '%.0f'|format(job.dest_size / 1e6) }} MB{% else %}—{% endif %}</td>
               <td>
@@ -1653,7 +1655,7 @@
     if (!confirm('Clear job history?\n\nFile cache is kept — already-transcoded files will not be re-processed.\nSettings (CQ, preset, etc.) are not affected.')) return;
     try {
       const r = await fetch('/api/clean-jobs', { method: 'POST' });
-      if (r.redirected || !r.ok) { alert('Request failed (status ' + r.status + ')'); return; }
+      if (r.redirected) { alert('Authentication required — please reload the page.'); return; }
       const d = await r.json();
       if (!d.ok) { alert(d.msg || 'Failed'); return; }
       window.location.href = '/?_=' + Date.now();
@@ -1667,7 +1669,7 @@
     if (!confirm('Delete ALL job history AND file cache?\n\nAll files will be re-transcoded on next scan.\nSettings (CQ, preset, etc.) are not affected.')) return;
     try {
       const r = await fetch('/api/reset', { method: 'POST' });
-      if (r.redirected || !r.ok) { alert('Request failed (status ' + r.status + ')'); return; }
+      if (r.redirected) { alert('Authentication required — please reload the page.'); return; }
       const d = await r.json();
       if (!d.ok) { alert(d.msg || 'Reset failed'); return; }
       window.location.href = '/?_=' + Date.now();
