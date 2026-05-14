@@ -285,8 +285,8 @@
     /* ─── Stat cards ─────────────────────────────── */
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      gap: .85rem;
+      grid-template-columns: repeat(5, 1fr);
+      gap: .65rem;
       margin-bottom: 1.4rem;
     }
 
@@ -295,8 +295,9 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 1.1rem 1.3rem 1rem;
+      padding: .7rem 1rem .65rem;
       overflow: hidden;
+      text-align: center;
       transition: border-color .2s, box-shadow .2s, transform .2s;
     }
     .card:hover {
@@ -313,16 +314,18 @@
     }
 
     .card-icon {
-      margin-bottom: .6rem;
+      display: flex;
+      justify-content: center;
+      margin-bottom: .35rem;
       line-height: 1;
     }
 
     .card-val {
-      font-size: 1.75rem;
+      font-size: 1.45rem;
       font-weight: 700;
       letter-spacing: -.04em;
       line-height: 1;
-      margin-bottom: .32rem;
+      margin-bottom: .25rem;
     }
     .card-val small {
       font-size: .9rem;
