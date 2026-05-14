@@ -1001,7 +1001,10 @@
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
       </div>
-      <div class="card-val">{{ '%.1f'|format((stats.total_elapsed_s or 0)/3600) }}<small>h</small></div>
+      {% set _s = stats.total_elapsed_s or 0 %}
+      {% set _h = (_s / 3600) | int %}
+      {% set _m = ((_s % 3600) / 60) | int %}
+      <div class="card-val">{{ _h }}<small>h</small>&thinsp;{{ _m }}<small>m</small></div>
       <div class="card-lbl">GPU Time</div>
     </div>
 
