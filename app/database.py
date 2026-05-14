@@ -21,6 +21,16 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_started ON jobs(started_at);
+
+-- Avoids re-running ffprobe on unchanged files between scan runs.
+-- Key: path + size + mtime. On a cache hit the probe is skipped entirely.
+CREATE TABLE IF NOT EXISTS file_cache (
+    path     TEXT    PRIMARY KEY,
+    size     INTEGER NOT NULL,
+    mtime    REAL    NOT NULL,
+    codec    TEXT    NOT NULL,
+    duration REAL    NOT NULL DEFAULT 0
+);
 """
 
 
@@ -72,6 +82,22 @@ def get_codec_stats(conn) -> list:
         GROUP BY src_codec ORDER BY cnt DESC
     """).fetchall()
     return [dict(r) for r in rows]
+
+
+def cache_get(conn, path: str, size: int, mtime: float) -> dict | None:
+    row = conn.execute(
+        "SELECT codec, duration FROM file_cache WHERE path=? AND size=? AND mtime=?",
+        (path, size, mtime),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def cache_set(conn, path: str, size: int, mtime: float, codec: str, duration: float = 0.0):
+    conn.execute(
+        "INSERT OR REPLACE INTO file_cache (path,size,mtime,codec,duration) VALUES (?,?,?,?,?)",
+        (path, size, mtime, codec, duration),
+    )
+    conn.commit()
 
 
 def get_recent_jobs(conn, limit: int = 50) -> list:

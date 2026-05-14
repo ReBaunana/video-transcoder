@@ -105,23 +105,39 @@ def cleanup_leftover_temps():
 # ── Core transcoding ──────────────────────────────────────────────────────────
 
 def transcode_file(path: Path, db) -> str:
-    from app.database import record_start, record_finish
+    from app.database import record_start, record_finish, cache_get, cache_set
 
-    info = probe(path)
-    if not info:
-        log.warning(f'probe failed: {path}')
+    try:
+        st = path.stat()
+    except OSError:
         return 'failed'
 
-    codec = info['codec']
-
-    if codec in IDEAL_CODECS or codec in SKIP_CODECS:
-        return 'skipped'
+    cached = cache_get(db, str(path), st.st_size, st.st_mtime)
+    if cached:
+        codec = cached['codec']
+        if codec in IDEAL_CODECS or codec in SKIP_CODECS:
+            return 'skipped'
+        # Needs transcoding — use cached duration to avoid a second probe
+        info = {'codec': codec, 'duration': cached['duration']}
+        if info['duration'] == 0:
+            # Duration wasn't cached (older entry) — probe for it
+            full = probe(path)
+            info['duration'] = full['duration'] if full else 0
+    else:
+        info = probe(path)
+        if not info:
+            log.warning(f'probe failed: {path}')
+            return 'failed'
+        codec = info['codec']
+        cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'])
+        if codec in IDEAL_CODECS or codec in SKIP_CODECS:
+            return 'skipped'
 
     out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
     tmp      = path.with_name(path.stem + '.transcoding' + out_ext)
     dest     = path.with_suffix(out_ext)
     mount    = path.parts[2] if len(path.parts) > 2 else ''
-    src_size = path.stat().st_size
+    src_size = st.st_size
 
     log.info(f'TRANSCODE  {path.name}  [{codec}→hevc_nvenc CQ{CQ}]  {src_size / 1e6:.0f}MB')
 
@@ -184,6 +200,14 @@ def transcode_file(path: Path, db) -> str:
     tmp.replace(dest)
 
     record_finish(db, job_id, 'done', dest_size, elapsed)
+
+    # Cache the output file as hevc so the next scan skips it without probing
+    try:
+        dest_st = dest.stat()
+        cache_set(db, str(dest), dest_st.st_size, dest_st.st_mtime, 'hevc', out_info['duration'])
+    except OSError:
+        pass
+
     with _lock:
         state['progress'] = 100.0
     log.info(f'  OK  {dest.name}')
