@@ -140,11 +140,9 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background: rgba(22,22,68,.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(108,142,245,.28);
-      box-shadow: inset 0 1px 0 rgba(108,142,245,.18), 0 3px 14px rgba(0,0,0,.55);
+      background: linear-gradient(180deg, #181838 0%, #12122a 100%);
+      border-bottom: 1px solid #2a2a5a;
+      box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(46,46,96,.25);
       font-size: 11px;
       position: sticky;
       top: 0;
@@ -212,6 +210,13 @@
     .sys-arrow { font-size: 10px; }
     .sys-item .sys-arrow:first-of-type  { color: #67e8f9; }
     .sys-item .sys-arrow:last-of-type   { color: #a78bfa; }
+
+    /* explicit dark-theme override (system-light + data-theme="dark") */
+    [data-theme="dark"] #sysBar {
+      background: linear-gradient(180deg, #181838 0%, #12122a 100%);
+      border-bottom: 1px solid #2a2a5a;
+      box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(46,46,96,.25);
+    }
 
     /* ─── Sys bar light mode overrides ──────────────── */
     @media (prefers-color-scheme: light) {
@@ -2594,23 +2599,33 @@
   _applyMountFilter();
 
   /* ── Theme toggle ────────────────────────────────────────── */
-  function _isLight() {
+  const _SVG_MOON    = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  const _SVG_SUN     = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  const _SVG_MONITOR = '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><polyline points="8 21 12 17 16 21"/>';
+
+  function _getThemeMode() {
     const t = document.documentElement.getAttribute('data-theme');
-    if (t === 'light') return true;
-    if (t === 'dark')  return false;
+    if (t === 'light') return 'light';
+    if (t === 'dark')  return 'dark';
+    return 'auto';
+  }
+
+  function _isLight() {
+    const m = _getThemeMode();
+    if (m === 'light') return true;
+    if (m === 'dark')  return false;
     return window.matchMedia('(prefers-color-scheme: light)').matches;
   }
 
   function _applyThemeLabel() {
-    const light = _isLight();
+    const mode = _getThemeMode();
     const lbl  = document.getElementById('themeToggleLabel');
     const icon = document.getElementById('themeIcon');
-    if (lbl) lbl.textContent = light ? 'Dark Mode' : 'Light Mode';
-    if (icon) {
-      icon.innerHTML = light
-        ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'  // moon
-        : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'; // sun
-    }
+    // label shows the NEXT state (what you'll switch to)
+    const labels = { auto: 'Light Mode', light: 'Dark Mode', dark: 'Auto' };
+    const icons  = { auto: _SVG_SUN,     light: _SVG_MOON,  dark: _SVG_MONITOR };
+    if (lbl)  lbl.textContent  = labels[mode];
+    if (icon) icon.innerHTML   = icons[mode];
   }
 
   function updateChartTheme(light) {
@@ -2624,19 +2639,30 @@
   }
 
   function toggleTheme() {
-    const next = _isLight() ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('vt-theme', next);
+    const mode = _getThemeMode();
+    if (mode === 'auto') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('vt-theme', 'light');
+    } else if (mode === 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('vt-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.removeItem('vt-theme');
+    }
     _applyThemeLabel();
-    updateChartTheme(next === 'light');
+    updateChartTheme(_isLight());
   }
 
   // Set correct label + icon on page load
   _applyThemeLabel();
 
-  // Sync when OS theme changes (only if user has no manual override)
+  // Sync when OS theme changes — only when in auto mode (no manual override)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-    if (!localStorage.getItem('vt-theme')) _applyThemeLabel();
+    if (_getThemeMode() === 'auto') {
+      _applyThemeLabel();
+      updateChartTheme(_isLight());
+    }
   });
 
   /* ── Chart.js doughnut ───────────────────────────────────── */
