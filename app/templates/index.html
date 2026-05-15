@@ -140,9 +140,10 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background-color: #13133e; /* solid color — compatible with transition:background-color */
-      border-bottom: 1px solid #35358a;
-      box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(80,80,180,.3);
+      background-color: var(--bg);
+      border-top: 2px solid var(--accent);
+      border-bottom: 1px solid var(--border);
+      box-shadow: none;
       font-size: 11px;
       position: sticky;
       top: 0;
@@ -211,19 +212,13 @@
     .sys-item .sys-arrow:first-of-type  { color: #67e8f9; }
     .sys-item .sys-arrow:last-of-type   { color: #a78bfa; }
 
-    /* explicit dark-theme override (system-light + data-theme="dark") */
-    [data-theme="dark"] #sysBar {
-      background-color: #13133e;
-      border-bottom: 1px solid #35358a;
-      box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(80,80,180,.3);
-    }
-
     /* ─── Sys bar light mode overrides ──────────────── */
     @media (prefers-color-scheme: light) {
       #sysBar {
-        background-color: var(--surface);
+        background-color: var(--bg);
+        border-top: 2px solid var(--accent);
         border-bottom: 1px solid var(--border);
-        box-shadow: 0 1px 3px rgba(0,0,0,.06);
+        box-shadow: none;
       }
       .sys-lbl   { color: var(--text-muted); }
       .sys-track { background: var(--surface-3); box-shadow: none; }
@@ -236,9 +231,10 @@
       .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
     }
     [data-theme="light"] #sysBar {
-      background-color: var(--surface);
+      background-color: var(--bg);
+      border-top: 2px solid var(--accent);
       border-bottom: 1px solid var(--border);
-      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      box-shadow: none;
     }
     [data-theme="light"] .sys-lbl   { color: var(--text-muted); }
     [data-theme="light"] .sys-track { background: var(--surface-3); box-shadow: none; }
@@ -2085,6 +2081,19 @@
           Two env vars control which interface is shown:<br><br>
           <code class="modal-code">NET_IFACE=eno1</code> &nbsp;— pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
           <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;— path to read counters from. Only change this if you use a different mount point.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Display Theme (Auto / Light / Dark)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The theme button in <strong style="color:var(--text)">☰ → (first item)</strong> cycles through three modes:<br><br>
+          <span style="color:var(--text)">🖥 Auto</span> &nbsp;— follows your device's system setting. If your Mac or phone switches between Dark and Light mode automatically (e.g. sunrise/sunset schedule), the dashboard follows along in real time. No manual action needed.<br><br>
+          <span style="color:var(--text)">☀ Light</span> &nbsp;— forces light mode regardless of the system setting.<br><br>
+          <span style="color:var(--text)">☾ Dark</span> &nbsp;— forces dark mode regardless of the system setting.<br><br>
+          The choice is saved in your browser. To reset to system-following behavior, click until you see <strong style="color:var(--text)">Auto</strong>.
         </div>
       </div>
 
