@@ -140,7 +140,7 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background: linear-gradient(180deg, #1e1e5c 0%, #0d0d30 100%);
+      background-color: #13133e; /* solid color — compatible with transition:background-color */
       border-bottom: 1px solid #35358a;
       box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(80,80,180,.3);
       font-size: 11px;
@@ -213,7 +213,7 @@
 
     /* explicit dark-theme override (system-light + data-theme="dark") */
     [data-theme="dark"] #sysBar {
-      background: linear-gradient(180deg, #1e1e5c 0%, #0d0d30 100%);
+      background-color: #13133e;
       border-bottom: 1px solid #35358a;
       box-shadow: 0 2px 12px rgba(0,0,0,.62), inset 0 1px 0 rgba(80,80,180,.3);
     }
@@ -221,7 +221,7 @@
     /* ─── Sys bar light mode overrides ──────────────── */
     @media (prefers-color-scheme: light) {
       #sysBar {
-        background: var(--surface);
+        background-color: var(--surface);
         border-bottom: 1px solid var(--border);
         box-shadow: 0 1px 3px rgba(0,0,0,.06);
       }
@@ -236,7 +236,7 @@
       .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
     }
     [data-theme="light"] #sysBar {
-      background: var(--surface);
+      background-color: var(--surface);
       border-bottom: 1px solid var(--border);
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
     }
