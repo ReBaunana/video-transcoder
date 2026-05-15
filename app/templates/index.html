@@ -140,8 +140,9 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #0f0f24 0%, #0a0a1a 100%);
+      border-bottom: 1px solid rgba(108,142,245,.12);
+      box-shadow: inset 0 1px 0 rgba(108,142,245,.07), 0 2px 8px rgba(0,0,0,.35);
       font-size: 11px;
       position: sticky;
       top: 0;
@@ -154,7 +155,7 @@
       flex-shrink: 0;
     }
     .sys-lbl {
-      color: var(--text-muted);
+      color: #6d7299;
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
@@ -164,21 +165,30 @@
     .sys-track {
       width: 72px;
       height: 5px;
-      background: var(--surface-3);
+      background: rgba(167,139,250,.10);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,.4);
       border-radius: 99px;
       overflow: hidden;
     }
     .sys-fill {
       height: 100%;
       border-radius: 99px;
-      background: var(--green);
+      background: linear-gradient(90deg, #22c984, #34d399);
+      box-shadow: 0 0 6px rgba(52,211,153,.55);
       width: 0%;
-      transition: width .6s ease, background-color .6s ease;
+      transition: width .6s ease, background .6s ease, box-shadow .6s ease;
     }
-    .sys-fill.warn { background: var(--yellow); }
-    .sys-fill.crit { background: var(--red); }
+    .sys-fill.warn {
+      background: linear-gradient(90deg, #d97706, #fbbf24);
+      box-shadow: 0 0 6px rgba(251,191,36,.5);
+    }
+    .sys-fill.crit {
+      background: linear-gradient(90deg, #dc2626, #f87171);
+      box-shadow: 0 0 6px rgba(248,113,113,.55);
+    }
     .sys-pct {
-      color: var(--text);
+      color: #c8cde8;
+      font-weight: 500;
       font-variant-numeric: tabular-nums;
       width: 30px;
       text-align: right;
@@ -187,16 +197,52 @@
     .sys-sep {
       width: 1px;
       height: 12px;
-      background: var(--border);
+      background: linear-gradient(180deg, transparent, rgba(108,142,245,.18), transparent);
       flex-shrink: 0;
     }
     .sys-net-val {
-      color: var(--text);
+      color: #c8cde8;
+      font-weight: 500;
       font-variant-numeric: tabular-nums;
       font-size: 11px;
       min-width: 52px;
     }
-    .sys-arrow { color: var(--text-muted); font-size: 10px; }
+    .sys-arrow { font-size: 10px; }
+    .sys-item .sys-arrow:first-of-type  { color: #67e8f9; }
+    .sys-item .sys-arrow:last-of-type   { color: #a78bfa; }
+
+    /* ─── Sys bar light mode overrides ──────────────── */
+    @media (prefers-color-scheme: light) {
+      #sysBar {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      }
+      .sys-lbl   { color: var(--text-muted); }
+      .sys-track { background: var(--surface-3); box-shadow: none; }
+      .sys-fill  { background: var(--green); box-shadow: none; }
+      .sys-fill.warn { background: var(--yellow); box-shadow: none; }
+      .sys-fill.crit { background: var(--red);    box-shadow: none; }
+      .sys-pct, .sys-net-val { color: var(--text); font-weight: 400; }
+      .sys-sep   { background: var(--border); }
+      .sys-item .sys-arrow:first-of-type,
+      .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
+    }
+    [data-theme="light"] #sysBar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    [data-theme="light"] .sys-lbl   { color: var(--text-muted); }
+    [data-theme="light"] .sys-track { background: var(--surface-3); box-shadow: none; }
+    [data-theme="light"] .sys-fill  { background: var(--green); box-shadow: none; }
+    [data-theme="light"] .sys-fill.warn { background: var(--yellow); box-shadow: none; }
+    [data-theme="light"] .sys-fill.crit { background: var(--red);    box-shadow: none; }
+    [data-theme="light"] .sys-pct,
+    [data-theme="light"] .sys-net-val { color: var(--text); font-weight: 400; }
+    [data-theme="light"] .sys-sep { background: var(--border); }
+    [data-theme="light"] .sys-item .sys-arrow:first-of-type,
+    [data-theme="light"] .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
 
     /* ─── Header ─────────────────────────────────── */
     header {
