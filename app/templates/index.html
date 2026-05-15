@@ -213,6 +213,9 @@
     [data-theme="light"] .sys-item .sys-arrow:first-of-type,
     [data-theme="light"] .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
 
+    /* Dark mode wins regardless of OS preference */
+    [data-theme="dark"] #sysBar { background: rgba(8,8,16,.92); border-bottom: 1px solid var(--border); }
+
     /* ─── Header ─────────────────────────────────── */
     header {
       position: sticky;
