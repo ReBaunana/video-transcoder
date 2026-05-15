@@ -111,7 +111,7 @@
     }
 
     /* ─── Theme transition (on key surfaces only) ────── */
-    body, header, #sysBar,
+    body, header,
     .card, .panel, .progress-box,
     .setting-card, .mount-card, .worker-card,
     .adv-menu, .modal, .badge, .btn, th, tbody tr {
@@ -140,8 +140,7 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background-color: var(--bg);
-      border-top: 2px solid var(--accent);
+      background-color: var(--surface-3);
       border-bottom: 1px solid var(--border);
       box-shadow: none;
       font-size: 11px;
@@ -216,7 +215,6 @@
     @media (prefers-color-scheme: light) {
       #sysBar {
         background-color: var(--bg);
-        border-top: 2px solid var(--accent);
         border-bottom: 1px solid var(--border);
         box-shadow: none;
       }
@@ -232,7 +230,6 @@
     }
     [data-theme="light"] #sysBar {
       background-color: var(--bg);
-      border-top: 2px solid var(--accent);
       border-bottom: 1px solid var(--border);
       box-shadow: none;
     }
