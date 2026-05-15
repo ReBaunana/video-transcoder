@@ -140,7 +140,7 @@
       align-items: center;
       gap: 18px;
       padding: 5px 1.75rem;
-      background: var(--surface);
+      background: rgba(8,8,16,.92);
       border-bottom: 1px solid var(--border);
       font-size: 11px;
       position: sticky;
@@ -190,7 +190,7 @@
 
     /* ─── Sys bar light mode overrides ──────────────── */
     @media (prefers-color-scheme: light) {
-      #sysBar { background: var(--surface); border-bottom: 1px solid var(--border); }
+      #sysBar { background: rgba(240,241,248,.92); border-bottom: 1px solid var(--border); }
       .sys-lbl   { color: var(--text-muted); }
       .sys-track { background: var(--surface-3); }
       .sys-fill  { background: var(--green); }
@@ -201,7 +201,7 @@
       .sys-item .sys-arrow:first-of-type,
       .sys-item .sys-arrow:last-of-type { color: var(--text-muted); }
     }
-    [data-theme="light"] #sysBar { background: var(--surface); border-bottom: 1px solid var(--border); }
+    [data-theme="light"] #sysBar { background: rgba(240,241,248,.92); border-bottom: 1px solid var(--border); }
     [data-theme="light"] .sys-lbl   { color: var(--text-muted); }
     [data-theme="light"] .sys-track { background: var(--surface-3); }
     [data-theme="light"] .sys-fill  { background: var(--green); }
@@ -240,6 +240,7 @@
       color: var(--text);
       letter-spacing: -.015em;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .logo-icon {
