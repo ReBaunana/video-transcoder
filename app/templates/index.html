@@ -768,7 +768,29 @@
     }
     .mount-card.active .mount-icon { color: var(--cyan); }
 
-    .mount-info { min-width: 0; }
+    .mount-info { min-width: 0; flex: 1; }
+
+    .mount-hide-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: .28rem .38rem;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      gap: .28rem;
+      font-size: .67rem;
+      font-family: inherit;
+      line-height: 1;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .mount-hide-btn:hover { color: var(--text-muted); background: var(--surface-3); border-color: var(--border); }
+    .mount-hide-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+    .mount-card.jobs-hidden { opacity: .6; }
+    tr.mount-hidden { display: none !important; }
 
     .mount-name {
       font-size: .78rem;
@@ -1704,6 +1726,13 @@
           {% endif %}
         </div>
       </div>
+      <button class="mount-hide-btn" id="mhide-{{ m.name }}"
+              onclick="toggleMountFilter('{{ m.name }}')"
+              title="Hide jobs from this library in Recent Jobs">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
     </div>
     {% endfor %}
   </div>
@@ -1871,7 +1900,7 @@
           </thead>
           <tbody id="jobsBody">
             {% for job in recent %}
-            <tr data-status="{{ job.status }}" title="{{ job.path }}">
+            <tr data-status="{{ job.status }}" data-mount="{{ job.mount or '' }}" title="{{ job.path }}">
               <td class="td-file">{{ job.filename[:48] }}{% if job.filename | length > 48 %}&hellip;{% endif %}</td>
               <td class="td-dim">{{ job.mount or '—' }}</td>
               <td class="td-dim">{{ job.src_codec or '—' }}</td>
@@ -2483,6 +2512,38 @@
       }
     } catch (_) {}
   })();
+
+  /* ── Mount job filter ───────────────────────────────────── */
+  const _hiddenMounts = new Set(JSON.parse(localStorage.getItem('vt-hidden-mounts') || '[]'));
+
+  function _applyMountFilter() {
+    // Hide/show job rows
+    document.querySelectorAll('#jobsBody tr[data-mount]').forEach(function(tr) {
+      tr.classList.toggle('mount-hidden', _hiddenMounts.has(tr.dataset.mount));
+    });
+    // Update each button state + icon
+    document.querySelectorAll('.mount-hide-btn').forEach(function(btn) {
+      const name = btn.id.replace('mhide-', '');
+      const hidden = _hiddenMounts.has(name);
+      btn.classList.toggle('active', hidden);
+      const svg = btn.querySelector('svg');
+      if (svg) {
+        svg.innerHTML = hidden
+          ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+          : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+      }
+      const card = btn.closest('.mount-card');
+      if (card) card.classList.toggle('jobs-hidden', hidden);
+    });
+  }
+
+  function toggleMountFilter(name) {
+    _hiddenMounts.has(name) ? _hiddenMounts.delete(name) : _hiddenMounts.add(name);
+    localStorage.setItem('vt-hidden-mounts', JSON.stringify([..._hiddenMounts]));
+    _applyMountFilter();
+  }
+
+  _applyMountFilter();
 
   /* ── Theme toggle ────────────────────────────────────────── */
   function _isLight() {
