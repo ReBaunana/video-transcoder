@@ -464,6 +464,7 @@
       margin-top: .55rem;
     }
     .progress-pct { font-weight: 700; color: var(--accent); }
+    .worker-fps   { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
     /* ─── Bottom grid ────────────────────────────── */
     .grid2 {
@@ -1527,8 +1528,11 @@
       <div class="mount-info">
         <div class="mount-name">/media/{{ m.name }}</div>
         <div class="mount-meta">
+          {% set mt = state.mount_totals.get(m.name, 0) %}
           {% if m.done %}
-          <span class="mount-stat green">{{ m.done }} done</span>
+          <span class="mount-stat green" id="mstat-done-{{ m.name }}">{{ m.done }}{% if mt %}/{{ mt }}{% endif %} done</span>
+          {% elif mt %}
+          <span class="mount-stat" id="mstat-done-{{ m.name }}">0/{{ mt }} done</span>
           {% endif %}
           {% if m.failed %}
           <span class="mount-stat red">{{ m.failed }} failed</span>
@@ -1539,7 +1543,7 @@
             {{ '%+.1f'|format(saved) }} GB
           </span>
           {% endif %}
-          {% if not m.done and not m.failed %}
+          {% if not m.done and not m.failed and not mt %}
           <span class="mount-stat">not yet scanned</span>
           {% endif %}
         </div>
@@ -1625,7 +1629,7 @@
       </div>
       <div class="progress-footer">
         <span class="progress-pct" id="wpct-{{ slot_id }}">{{ '%.1f'|format(w.progress) }}%</span>
-        <span>live &mdash; 2 s</span>
+        <span class="worker-fps" id="wfps-{{ slot_id }}">{% if w.fps %}{{ '%.0f'|format(w.fps) }} fps{% endif %}</span>
       </div>
       {% else %}
       <div class="worker-idle-inner">
@@ -2270,16 +2274,29 @@
       // Worker progress bars (only meaningful while running)
       if (running) {
         for (const i of Object.keys(d.state.workers)) {
-          const w   = workers[i];
+          const w    = workers[i];
           const bar  = document.getElementById('wbar-'  + i);
           const glow = document.getElementById('wglow-' + i);
           const pct  = document.getElementById('wpct-'  + i);
+          const fps  = document.getElementById('wfps-'  + i);
           if (w && bar) {
             const p = (w.progress || 0).toFixed(1);
             bar.style.width  = p + '%';
             if (glow) glow.style.width = p + '%';
             if (pct)  pct.textContent  = p + '%';
+            if (fps)  fps.textContent  = w.fps > 0 ? Math.round(w.fps) + ' fps' : '';
           }
+        }
+      }
+
+      // Mount done/total counts (live during scan)
+      const totals = d.mount_totals || {};
+      for (const [name, total] of Object.entries(totals)) {
+        const el = document.getElementById('mstat-done-' + name);
+        if (el && total > 0) {
+          const doneMatch = el.textContent.match(/^(\d+)/);
+          const done = doneMatch ? doneMatch[1] : '0';
+          el.textContent = done + '/' + total + ' done';
         }
       }
     } catch (_) {}

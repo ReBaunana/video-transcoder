@@ -281,6 +281,7 @@ async def api_status():
     return JSONResponse({
         'state': transcoder.state,
         'stats': get_stats(db),
+        'mount_totals': transcoder.state.get('mount_totals', {}),
     })
 
 

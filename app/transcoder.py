@@ -39,8 +39,9 @@ OUTPUT_EXT = {
 state: dict = {
     'running':       False,
     'stopping':      False,
-    'workers':       {},   # {slot_id: None | {'file', 'codec', 'progress', 'started_at'}}
+    'workers':       {},   # {slot_id: None | {'file', 'codec', 'progress', 'fps', 'started_at'}}
     'current_mount': None,
+    'mount_totals':  {},   # {mount_name: total_video_file_count}
     'session':       {'done': 0, 'failed': 0, 'skipped': 0},
 }
 _stop      = threading.Event()
@@ -130,6 +131,8 @@ def _parse_time(s: str) -> float:
 
 _NVENC_SESSION_LIMIT = 'OpenEncodeSessionEx failed'
 
+_fps_re = re.compile(r'\bfps=\s*(\d+(?:\.\d+)?)')
+
 def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> tuple[int, str]:
     """Return (returncode, stderr_tail).  rc=-1 means stopped by request."""
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
@@ -142,12 +145,15 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> tuple[int, str]:
                 proc.terminate()
                 proc.wait()
                 return -1, ''
-            m = time_re.search(line)
-            if m and duration > 0:
-                progress = min(_parse_time(m.group(1)) / duration * 100, 99.9)
-                with _lock:
-                    if state['workers'].get(slot_id):
-                        state['workers'][slot_id]['progress'] = progress
+            with _lock:
+                w = state['workers'].get(slot_id)
+                if w:
+                    m = time_re.search(line)
+                    if m and duration > 0:
+                        w['progress'] = min(_parse_time(m.group(1)) / duration * 100, 99.9)
+                    fm = _fps_re.search(line)
+                    if fm:
+                        w['fps'] = float(fm.group(1))
             stripped = line.strip()
             if stripped and not noise_re.search(stripped):
                 stderr_tail.append(stripped)
@@ -239,6 +245,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             'file':       path.name,
             'codec':      codec,
             'progress':   0.0,
+            'fps':        0.0,
             'started_at': started.isoformat(),
         }
 
@@ -376,8 +383,14 @@ def run_scan(db):
 
         for mount in mounts:
             log.info(f'--- {mount.name} ---')
+            total = sum(
+                1 for r, _, fs in os.walk(mount)
+                for f in fs
+                if Path(f).suffix.lower() in VIDEO_EXTENSIONS and '.transcoding.' not in f
+            )
             with _lock:
                 state['current_mount'] = mount.name
+                state['mount_totals'][mount.name] = total
 
             for root, dirs, files in os.walk(mount, topdown=True):
                 dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
@@ -409,6 +422,7 @@ def run_scan(db):
                 'stopping':      False,
                 'workers':       {},
                 'current_mount': None,
+                'mount_totals':  {},
             })
         log.info(f'=== Scan done: {state["session"]} ===')
 
