@@ -17,7 +17,8 @@ IDEAL_CODECS       = frozenset({'hevc', 'av1'})
 SKIP_CODECS        = frozenset({'gif', 'png', 'unknown', 'mjpeg', 'corrupt'})
 CQ                 = os.getenv('FFMPEG_CQ', '28')
 PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
-DRY_RUN            = os.getenv('DRY_RUN', 'false').lower() == 'true'
+DRY_RUN                = os.getenv('DRY_RUN', 'false').lower() == 'true'
+RETRANSCODE_ORIGINALS  = False
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
@@ -52,7 +53,7 @@ _lock      = threading.Lock()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR
+    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -64,7 +65,8 @@ def load_settings():
             'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7',
         }:
             PRESET = data['preset']
-        DRY_RUN           = bool(data.get('dry_run', DRY_RUN))
+        DRY_RUN                = bool(data.get('dry_run', DRY_RUN))
+        RETRANSCODE_ORIGINALS  = bool(data.get('retranscode_originals', RETRANSCODE_ORIGINALS))
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
@@ -89,6 +91,7 @@ def save_settings():
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
             'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
+            'retranscode_originals': RETRANSCODE_ORIGINALS,
         }))
         tmp.replace(SETTINGS_PATH)
     except Exception:
@@ -202,10 +205,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             return 'skipped'
         if codec in IDEAL_CODECS:
             cached_cq = cached.get('cq', '')
-            # 'original' = was already HEVC when first scanned, never our encode → always skip
-            # CQ matches current setting → skip
-            # '' (legacy) or different CQ → re-transcode
-            if cached_cq == 'original' or cached_cq == _cq:
+            if cached_cq == _cq:
+                return 'skipped'
+            if cached_cq == 'original' and not RETRANSCODE_ORIGINALS:
                 return 'skipped'
             log.info(f'Re-transcode {path.name}: cached CQ={repr(cached_cq)} current={_cq}')
         info = {'codec': codec, 'duration': cached['duration']}

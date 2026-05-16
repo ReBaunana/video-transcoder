@@ -1876,6 +1876,12 @@
       <div class="setting-hint">Simulate without encoding</div>
     </div>
     <div class="setting-card">
+      <div class="setting-label">Re-encode Originals</div>
+      <button id="cfgRetranscodeOriginals" class="toggle-btn {{ 'active' if retranscode_originals else '' }}"
+              onclick="toggleRetranscodeOriginals()">{{ 'ON' if retranscode_originals else 'OFF' }}</button>
+      <div class="setting-hint">Also re-encode files that were already HEVC</div>
+    </div>
+    <div class="setting-card">
       <div class="setting-label">Backup</div>
       <button class="btn btn-backup" onclick="doBackup()">Backup Now</button>
       <div class="setting-hint" id="lastBackup">{{ last_backup or 'No backup yet' }}</div>
@@ -2559,6 +2565,23 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cq, preset }),
       });
+    } catch (_) {}
+  }
+
+  async function toggleRetranscodeOriginals() {
+    const btn = document.getElementById('cfgRetranscodeOriginals');
+    const cur = btn.classList.contains('active');
+    try {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retranscode_originals: !cur }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        btn.classList.toggle('active', d.retranscode_originals);
+        btn.textContent = d.retranscode_originals ? 'ON' : 'OFF';
+      }
     } catch (_) {}
   }
 

@@ -275,7 +275,8 @@ async def dashboard(request: Request):
             'workers_count':      transcoder.WORKERS,
             'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
             'backup_keep':        transcoder.BACKUP_KEEP,
-            'corrupt_count':      len(get_corrupt_files(db)),
+            'corrupt_count':           len(get_corrupt_files(db)),
+            'retranscode_originals':   transcoder.RETRANSCODE_ORIGINALS,
         })
 
 
@@ -343,13 +344,14 @@ _VALID_PRESETS = {
 @app.get('/api/config')
 async def api_get_config():
     return JSONResponse({
-        'cq':                transcoder.CQ,
-        'preset':            transcoder.PRESET,
-        'dry_run':           transcoder.DRY_RUN,
-        'workers':           transcoder.WORKERS,
-        'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
-        'backup_keep':       transcoder.BACKUP_KEEP,
-        'schedule_hour':     transcoder.SCHEDULE_HOUR,
+        'cq':                     transcoder.CQ,
+        'preset':                 transcoder.PRESET,
+        'dry_run':                transcoder.DRY_RUN,
+        'retranscode_originals':  transcoder.RETRANSCODE_ORIGINALS,
+        'workers':                transcoder.WORKERS,
+        'backup_interval_h':      transcoder.BACKUP_INTERVAL_H,
+        'backup_keep':            transcoder.BACKUP_KEEP,
+        'schedule_hour':          transcoder.SCHEDULE_HOUR,
     })
 
 
@@ -364,6 +366,8 @@ async def api_set_config(request: Request):
         transcoder.PRESET = body['preset']
     if 'dry_run' in body:
         transcoder.DRY_RUN = bool(body['dry_run'])
+    if 'retranscode_originals' in body:
+        transcoder.RETRANSCODE_ORIGINALS = bool(body['retranscode_originals'])
     if 'workers' in body:
         transcoder.WORKERS = max(1, min(int(body['workers']), 8))
     if 'backup_interval_h' in body:
@@ -374,14 +378,15 @@ async def api_set_config(request: Request):
         transcoder.SCHEDULE_HOUR = max(-1, min(int(body['schedule_hour']), 23))
     transcoder.save_settings()
     return JSONResponse({
-        'ok':                True,
-        'cq':                transcoder.CQ,
-        'preset':            transcoder.PRESET,
-        'dry_run':           transcoder.DRY_RUN,
-        'workers':           transcoder.WORKERS,
-        'backup_interval_h': transcoder.BACKUP_INTERVAL_H,
-        'backup_keep':       transcoder.BACKUP_KEEP,
-        'schedule_hour':     transcoder.SCHEDULE_HOUR,
+        'ok':                    True,
+        'cq':                    transcoder.CQ,
+        'preset':                transcoder.PRESET,
+        'dry_run':               transcoder.DRY_RUN,
+        'retranscode_originals': transcoder.RETRANSCODE_ORIGINALS,
+        'workers':               transcoder.WORKERS,
+        'backup_interval_h':     transcoder.BACKUP_INTERVAL_H,
+        'backup_keep':           transcoder.BACKUP_KEEP,
+        'schedule_hour':         transcoder.SCHEDULE_HOUR,
     })
 
 
