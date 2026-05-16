@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from app.database import (
     init as db_init, backup as db_backup, reset_db, clean_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
+    get_corrupt_files, delete_corrupt_cache_entries,
 )
 from app import transcoder
 
@@ -274,6 +275,7 @@ async def dashboard(request: Request):
             'workers_count':      transcoder.WORKERS,
             'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
             'backup_keep':        transcoder.BACKUP_KEEP,
+            'corrupt_count':      len(get_corrupt_files(db)),
         })
 
 
@@ -399,6 +401,35 @@ async def api_clean_jobs():
     clean_jobs(db)
     transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
     return JSONResponse({'ok': True})
+
+
+@app.get('/api/corrupt-files')
+async def api_corrupt_files():
+    files = get_corrupt_files(db)
+    # attach mount name (second path component under /media/)
+    for f in files:
+        parts = Path(f['path']).parts
+        f['mount'] = parts[2] if len(parts) > 2 else '?'
+        f['filename'] = Path(f['path']).name
+    return JSONResponse({'ok': True, 'files': files})
+
+
+@app.post('/api/corrupt-files/delete')
+async def api_delete_corrupt_files(request: Request):
+    body = await request.json()
+    paths = body.get('paths', [])
+    if not paths:
+        return JSONResponse({'ok': False, 'error': 'no paths'}, status_code=400)
+    deleted, errors = [], []
+    for p in paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+            deleted.append(p)
+        except Exception as e:
+            errors.append(str(e))
+    if deleted:
+        delete_corrupt_cache_entries(db, deleted)
+    return JSONResponse({'ok': True, 'deleted': len(deleted), 'errors': errors})
 
 
 @app.post('/api/backup')

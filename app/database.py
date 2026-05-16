@@ -145,6 +145,19 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+def get_corrupt_files(conn) -> list:
+    rows = conn.execute(
+        "SELECT path, size FROM file_cache WHERE codec='corrupt' ORDER BY path"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_corrupt_cache_entries(conn, paths: list):
+    with _lock:
+        conn.executemany("DELETE FROM file_cache WHERE path=?", [(p,) for p in paths])
+        conn.commit()
+
+
 def reset_db(conn: sqlite3.Connection):
     with _lock:
         conn.rollback()
