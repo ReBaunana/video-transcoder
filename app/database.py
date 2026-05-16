@@ -1,6 +1,9 @@
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
+
+_lock = threading.Lock()
 
 DB_PATH = Path('/data/transcoder.db')
 
@@ -59,22 +62,24 @@ def init(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 def record_start(conn, path, filename, src_codec, src_size, mount, cq: str = '') -> int:
-    cur = conn.execute(
-        "INSERT INTO jobs (path,filename,mount,src_codec,src_size,started_at,status,cq) VALUES (?,?,?,?,?,?,?,?)",
-        (path, filename, mount, src_codec, src_size,
-         datetime.now(timezone.utc).isoformat(), 'running', cq),
-    )
-    conn.commit()
-    return cur.lastrowid
+    with _lock:
+        cur = conn.execute(
+            "INSERT INTO jobs (path,filename,mount,src_codec,src_size,started_at,status,cq) VALUES (?,?,?,?,?,?,?,?)",
+            (path, filename, mount, src_codec, src_size,
+             datetime.now(timezone.utc).isoformat(), 'running', cq),
+        )
+        conn.commit()
+        return cur.lastrowid
 
 
 def record_finish(conn, job_id, status, dest_size, elapsed_s, error=None):
-    conn.execute(
-        "UPDATE jobs SET status=?,dest_size=?,elapsed_s=?,finished_at=?,error=? WHERE id=?",
-        (status, dest_size, elapsed_s,
-         datetime.now(timezone.utc).isoformat(), error, job_id),
-    )
-    conn.commit()
+    with _lock:
+        conn.execute(
+            "UPDATE jobs SET status=?,dest_size=?,elapsed_s=?,finished_at=?,error=? WHERE id=?",
+            (status, dest_size, elapsed_s,
+             datetime.now(timezone.utc).isoformat(), error, job_id),
+        )
+        conn.commit()
 
 
 def get_stats(conn) -> dict:
@@ -109,11 +114,12 @@ def cache_get(conn, path: str, size: int, mtime: float) -> dict | None:
 
 def cache_set(conn, path: str, size: int, mtime: float, codec: str,
               duration: float = 0.0, cq: str = ''):
-    conn.execute(
-        "INSERT OR REPLACE INTO file_cache (path,size,mtime,codec,duration,cq) VALUES (?,?,?,?,?,?)",
-        (path, size, mtime, codec, duration, cq),
-    )
-    conn.commit()
+    with _lock:
+        conn.execute(
+            "INSERT OR REPLACE INTO file_cache (path,size,mtime,codec,duration,cq) VALUES (?,?,?,?,?,?)",
+            (path, size, mtime, codec, duration, cq),
+        )
+        conn.commit()
 
 
 def get_mount_stats(conn) -> list:
@@ -140,16 +146,18 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
 
 
 def reset_db(conn: sqlite3.Connection):
-    conn.rollback()
-    conn.execute("DELETE FROM jobs")
-    conn.execute("DELETE FROM file_cache")
-    conn.commit()
+    with _lock:
+        conn.rollback()
+        conn.execute("DELETE FROM jobs")
+        conn.execute("DELETE FROM file_cache")
+        conn.commit()
 
 
 def clean_jobs(conn: sqlite3.Connection):
-    conn.rollback()
-    conn.execute("DELETE FROM jobs")
-    conn.commit()
+    with _lock:
+        conn.rollback()
+        conn.execute("DELETE FROM jobs")
+        conn.commit()
 
 
 BACKUP_DIR = Path('/data/backups')
