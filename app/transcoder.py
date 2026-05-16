@@ -116,6 +116,7 @@ def probe(path: Path) -> dict | None:
         return {
             'codec':    video.get('codec_name', '').lower(),
             'duration': float(data.get('format', {}).get('duration', 0)),
+            'cq':       data.get('format', {}).get('tags', {}).get('nvtranscode_cq', ''),
         }
     except Exception:
         return None
@@ -221,9 +222,18 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'])
             return 'skipped'
         if codec in IDEAL_CODECS:
-            # Mark as original HEVC — not our encode, always skip in future
-            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
-            return 'skipped'
+            embed_cq = info.get('cq', '')
+            if embed_cq:
+                # Our encode — restore provenance from embedded tag
+                cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=embed_cq)
+                if embed_cq == _cq:
+                    return 'skipped'
+                log.info(f'Re-transcode {path.name}: embedded CQ={repr(embed_cq)} current={_cq}')
+                # fall through to transcode
+            else:
+                # No tag — truly original HEVC, never re-transcode
+                cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
+                return 'skipped'
 
     out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
     tmp      = path.with_name(path.stem + '.transcoding' + out_ext)
@@ -255,6 +265,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         '-i', str(path),
         '-c:v', 'hevc_nvenc', '-cq', _cq, '-preset', _preset,
         '-c:a', 'copy', '-c:s', 'copy',
+        '-metadata', f'nvtranscode_cq={_cq}',
     ]
     if out_ext == '.mp4':
         cmd += ['-movflags', '+faststart']
