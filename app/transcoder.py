@@ -19,6 +19,7 @@ CQ                 = os.getenv('FFMPEG_CQ', '28')
 PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
 DRY_RUN                = os.getenv('DRY_RUN', 'false').lower() == 'true'
 RETRANSCODE_ORIGINALS  = False
+DISABLED_MOUNTS: set   = set()
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
@@ -53,7 +54,7 @@ _lock      = threading.Lock()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS
+    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -67,6 +68,7 @@ def load_settings():
             PRESET = data['preset']
         DRY_RUN                = bool(data.get('dry_run', DRY_RUN))
         RETRANSCODE_ORIGINALS  = bool(data.get('retranscode_originals', RETRANSCODE_ORIGINALS))
+        DISABLED_MOUNTS        = set(data.get('disabled_mounts', list(DISABLED_MOUNTS)))
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
@@ -92,6 +94,7 @@ def save_settings():
             'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
             'retranscode_originals': RETRANSCODE_ORIGINALS,
+            'disabled_mounts':       sorted(DISABLED_MOUNTS),
         }))
         tmp.replace(SETTINGS_PATH)
     except Exception:
@@ -396,6 +399,9 @@ def run_scan(db):
         log.info(f'Mounts: {[m.name for m in mounts]}')
 
         for mount in mounts:
+            if mount.name in DISABLED_MOUNTS:
+                log.info(f'--- {mount.name} --- (disabled, skipping)')
+                continue
             log.info(f'--- {mount.name} ---')
             total = sum(
                 1 for r, _, fs in os.walk(mount)

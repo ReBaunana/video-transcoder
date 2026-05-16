@@ -809,6 +809,15 @@
     .mount-hide-btn:hover { color: var(--text-muted); background: var(--surface-3); border-color: var(--border); }
     .mount-hide-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
     .mount-card.jobs-hidden { opacity: .6; }
+    .mount-card.disabled-mount { opacity: .45; }
+    .mount-card.disabled-mount .mount-name { text-decoration: line-through; color: var(--text-muted); }
+    .mount-disable-btn {
+      background: none; border: none; cursor: pointer; padding: .25rem;
+      color: var(--text-muted); border-radius: var(--radius-sm);
+      transition: color .15s, background .15s; flex-shrink: 0;
+    }
+    .mount-disable-btn:hover { color: var(--red); background: rgba(248,113,113,.1); }
+    .mount-card.disabled-mount .mount-disable-btn { color: var(--red); }
     tr.mount-hidden { display: none !important; }
 
     .mount-name {
@@ -1784,7 +1793,7 @@
   {% if mounts %}
   <div class="mounts">
     {% for m in mounts %}
-    <div class="mount-card {{ 'active' if state.current_mount == m.name else '' }}">
+    <div class="mount-card {{ 'active' if state.current_mount == m.name else '' }} {{ 'disabled-mount' if m.name in disabled_mounts else '' }}" id="mcard-{{ m.name }}">
       <div class="mount-icon">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -1822,6 +1831,13 @@
           {% endif %}
         </div>
       </div>
+      <button class="mount-disable-btn" id="mdisable-{{ m.name }}"
+              onclick="toggleMountDisable('{{ m.name }}')"
+              title="{{ 'Enable for scanning' if m.name in disabled_mounts else 'Disable from scanning' }}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+        </svg>
+      </button>
       <button class="mount-hide-btn" id="mhide-{{ m.name }}"
               onclick="toggleMountFilter('{{ m.name }}')"
               title="Hide jobs from this library in Recent Jobs">
@@ -2803,6 +2819,25 @@
     _hiddenMounts.has(name) ? _hiddenMounts.delete(name) : _hiddenMounts.add(name);
     localStorage.setItem('vt-hidden-mounts', JSON.stringify([..._hiddenMounts]));
     _applyMountFilter();
+  }
+
+  async function toggleMountDisable(name) {
+    try {
+      const r = await fetch('/api/mounts/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const d = await r.json();
+      if (!d.ok) { showToast(d.error || 'Failed', 'error'); return; }
+      const card = document.getElementById('mcard-' + name);
+      const btn  = document.getElementById('mdisable-' + name);
+      if (card) card.classList.toggle('disabled-mount', d.disabled);
+      if (btn)  btn.title = d.disabled ? 'Enable for scanning' : 'Disable from scanning';
+      showToast(d.disabled ? name + ' disabled — will be skipped on next scan' : name + ' enabled', d.disabled ? 'warn' : 'success');
+    } catch (e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
   }
 
   _applyMountFilter();

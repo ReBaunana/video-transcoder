@@ -276,6 +276,7 @@ async def dashboard(request: Request):
             'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
             'backup_keep':        transcoder.BACKUP_KEEP,
             'corrupt_count':           len(get_corrupt_files(db)),
+            'disabled_mounts':         list(transcoder.DISABLED_MOUNTS),
             'cache_mount_stats':       get_cache_mount_stats(db),
             'retranscode_originals':   transcoder.RETRANSCODE_ORIGINALS,
         })
@@ -407,6 +408,22 @@ async def api_clean_jobs():
     clean_jobs(db)
     transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
     return JSONResponse({'ok': True})
+
+
+@app.post('/api/mounts/toggle')
+async def api_mount_toggle(request: Request):
+    body = await request.json()
+    name = body.get('name', '').strip()
+    if not name:
+        return JSONResponse({'ok': False, 'error': 'no name'}, status_code=400)
+    if name in transcoder.DISABLED_MOUNTS:
+        transcoder.DISABLED_MOUNTS.discard(name)
+        disabled = False
+    else:
+        transcoder.DISABLED_MOUNTS.add(name)
+        disabled = True
+    transcoder.save_settings()
+    return JSONResponse({'ok': True, 'name': name, 'disabled': disabled})
 
 
 @app.get('/api/corrupt-files')
