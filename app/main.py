@@ -26,7 +26,8 @@ app       = FastAPI(title='Video Transcoder')
 templates = Jinja2Templates(directory='app/templates')
 db        = None
 
-APP_VERSION   = os.getenv('APP_VERSION', 'dev')
+_ver_file   = Path(__file__).parent.parent / 'VERSION'
+APP_VERSION = os.getenv('APP_VERSION') or (_ver_file.read_text().strip() if _ver_file.exists() else 'dev')
 
 last_backup_at: str | None = None
 
