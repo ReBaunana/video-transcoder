@@ -5,6 +5,9 @@ services:
     build: .
     container_name: video-transcoder
     restart: unless-stopped
+    user: "1001:1001"
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8267:8267"
     volumes:
