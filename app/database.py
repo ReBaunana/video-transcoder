@@ -140,12 +140,14 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
 
 
 def reset_db(conn: sqlite3.Connection):
+    conn.rollback()
     conn.execute("DELETE FROM jobs")
     conn.execute("DELETE FROM file_cache")
     conn.commit()
 
 
 def clean_jobs(conn: sqlite3.Connection):
+    conn.rollback()
     conn.execute("DELETE FROM jobs")
     conn.commit()
 
