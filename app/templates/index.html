@@ -1810,7 +1810,15 @@
           </span>
           {% endif %}
           {% if not m.done and not m.failed and not mt %}
+          {% set cm = cache_mount_stats.get(m.name, {}) %}
+          {% if cm.get('total', 0) %}
+          <span class="mount-stat">{{ cm.total }} cached</span>
+          {% if cm.get('corrupt', 0) %}
+          <span class="mount-stat red">{{ cm.corrupt }} corrupt</span>
+          {% endif %}
+          {% else %}
           <span class="mount-stat">not yet scanned</span>
+          {% endif %}
           {% endif %}
         </div>
       </div>

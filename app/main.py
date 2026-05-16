@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from app.database import (
     init as db_init, backup as db_backup, reset_db, clean_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
-    get_corrupt_files, delete_corrupt_cache_entries,
+    get_corrupt_files, delete_corrupt_cache_entries, get_cache_mount_stats,
 )
 from app import transcoder
 
@@ -276,6 +276,7 @@ async def dashboard(request: Request):
             'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
             'backup_keep':        transcoder.BACKUP_KEEP,
             'corrupt_count':           len(get_corrupt_files(db)),
+            'cache_mount_stats':       get_cache_mount_stats(db),
             'retranscode_originals':   transcoder.RETRANSCODE_ORIGINALS,
         })
 

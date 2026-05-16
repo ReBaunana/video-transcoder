@@ -145,6 +145,19 @@ def get_recent_jobs(conn, limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+def get_cache_mount_stats(conn) -> dict:
+    rows = conn.execute("""
+        SELECT
+            substr(path, 8, instr(substr(path, 8), '/') - 1) AS mount,
+            COUNT(*) AS total,
+            SUM(CASE WHEN codec = 'corrupt' THEN 1 ELSE 0 END) AS corrupt
+        FROM file_cache
+        WHERE path LIKE '/media/%' AND instr(substr(path, 8), '/') > 0
+        GROUP BY mount
+    """).fetchall()
+    return {r['mount']: dict(r) for r in rows}
+
+
 def get_corrupt_files(conn) -> list:
     rows = conn.execute(
         "SELECT path, size FROM file_cache WHERE codec='corrupt' ORDER BY path"
