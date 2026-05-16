@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 MEDIA_ROOT         = Path('/media')
 SETTINGS_PATH      = Path('/data/settings.json')
 IDEAL_CODECS       = frozenset({'hevc', 'av1'})
-SKIP_CODECS        = frozenset({'gif', 'png', 'unknown', 'mjpeg'})
+SKIP_CODECS        = frozenset({'gif', 'png', 'unknown', 'mjpeg', 'corrupt'})
 CQ                 = os.getenv('FFMPEG_CQ', '28')
 PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
 DRY_RUN            = os.getenv('DRY_RUN', 'false').lower() == 'true'
@@ -302,6 +302,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             log.error(f'[W{slot_id}]   duration drift {drift:.1%}')
             tmp.unlink(missing_ok=True)
             record_finish(db, job_id, 'failed', None, elapsed, f'duration drift {drift:.1%}')
+            cache_set(db, str(path), st.st_size, st.st_mtime, 'corrupt', info['duration'])
             with _lock:
                 state['workers'][slot_id] = None
             return 'failed'
