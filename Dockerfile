@@ -16,5 +16,11 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY VERSION ./
 COPY app/ app/
 
+RUN groupadd --gid 1001 appuser \
+    && useradd --uid 1001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8267
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8267"]
