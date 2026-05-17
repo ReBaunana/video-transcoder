@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APP_VERSION=${APP_VERSION}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip ffmpeg \
+    python3 python3-pip ffmpeg tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
