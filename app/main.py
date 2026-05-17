@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.database import (
-    init as db_init, backup as db_backup, reset_db, clean_jobs, BACKUP_DIR,
+    init as db_init, backup as db_backup, reset_db, clean_jobs, clean_failed_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
     get_corrupt_files, delete_corrupt_cache_entries, get_cache_mount_stats,
 )
@@ -412,6 +412,14 @@ async def api_clean_jobs():
         return JSONResponse({'ok': False, 'msg': 'Stop the scan before cleaning jobs'}, status_code=409)
     clean_jobs(db)
     transcoder.state['session'] = {'done': 0, 'failed': 0, 'skipped': 0}
+    return JSONResponse({'ok': True})
+
+
+@app.post('/api/clean-jobs/failed')
+async def api_clean_failed_jobs():
+    if transcoder.state['running']:
+        return JSONResponse({'ok': False, 'msg': 'Stop the scan before cleaning jobs'}, status_code=409)
+    clean_failed_jobs(db)
     return JSONResponse({'ok': True})
 
 

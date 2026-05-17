@@ -1272,6 +1272,13 @@
     .adv-item:hover { background: var(--surface-3); color: var(--text); }
     .adv-item.danger { color: rgba(248,113,113,.75); }
     .adv-item.danger:hover { background: var(--red-bg); color: var(--red); }
+    .adv-submenu { padding: .25rem .5rem .4rem 1.9rem; display:flex; flex-direction:column; gap:.35rem; }
+    .adv-sub-opt { font-size:.8rem; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:.45rem; user-select:none; }
+    .adv-sub-opt input { accent-color:var(--accent); cursor:pointer; }
+    .adv-sub-btn { margin-top:.2rem; padding:.3rem .75rem; font-size:.78rem; font-weight:600; border-radius:5px; border:none; background:var(--accent); color:#fff; cursor:pointer; align-self:flex-start; }
+    .adv-sub-btn:hover { opacity:.85; }
+    .adv-chevron { margin-left:auto; transition:transform .15s; }
+    .adv-submenu-wrap.open .adv-chevron { transform:rotate(180deg); }
 
     /* ─── Backup modal ──────────────────────────────────── */
     .modal-backdrop {
@@ -1681,10 +1688,18 @@
           <span class="corrupt-badge" id="corruptBadge">{{ corrupt_count }}</span>
         </button>
         <div style="height:1px;background:var(--border);margin:.15rem 0;"></div>
-        <button class="adv-item" onclick="cleanJobs()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-          Clean Jobs
-        </button>
+        <div class="adv-submenu-wrap" id="cleanJobsWrap">
+          <button class="adv-item" onclick="toggleCleanMenu()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+            Clean Jobs
+            <svg class="adv-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="adv-submenu" id="cleanSubmenu" style="display:none">
+            <label class="adv-sub-opt"><input type="radio" name="cleanMode" value="all" checked> All Jobs</label>
+            <label class="adv-sub-opt"><input type="radio" name="cleanMode" value="failed"> Failed Only</label>
+            <button class="adv-sub-btn" onclick="execCleanJobs()">Start Clean</button>
+          </div>
+        </div>
         <button class="adv-item danger" onclick="resetDB()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Reset DB
@@ -2523,16 +2538,27 @@
     if (status === 'failed') btn.classList.add('fp-failed');
   }
 
-  async function cleanJobs() {
+  function toggleCleanMenu() {
+    const wrap = document.getElementById('cleanJobsWrap');
+    const sub  = document.getElementById('cleanSubmenu');
+    const open = wrap.classList.toggle('open');
+    sub.style.display = open ? '' : 'none';
+  }
+
+  async function execCleanJobs() {
+    const mode  = document.querySelector('input[name="cleanMode"]:checked').value;
+    const isAll = mode === 'all';
     toggleAdv();
     const ok = await openConfirm(
-      'Clean Jobs',
-      'Clear job history?<br><br>File cache is kept — already-transcoded files will <em>not</em> be re-processed.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>',
+      isAll ? 'Clean All Jobs' : 'Clean Failed Jobs',
+      isAll
+        ? 'Clear all job history?<br><br>File cache is kept — already-transcoded files will <em>not</em> be re-processed.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>'
+        : 'Remove all <strong style="color:var(--text)">failed</strong> jobs from history?<br><br>File cache and successful jobs are untouched.',
       'Clean'
     );
     if (!ok) return;
     try {
-      const r = await fetch('/api/clean-jobs', { method: 'POST' });
+      const r = await fetch(isAll ? '/api/clean-jobs' : '/api/clean-jobs/failed', { method: 'POST' });
       const d = await r.json();
       if (!d.ok) { showToast(d.msg || 'Failed', 'error'); return; }
       window.location.href = '/?_=' + Date.now();

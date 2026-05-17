@@ -186,6 +186,13 @@ def clean_jobs(conn: sqlite3.Connection):
         conn.commit()
 
 
+def clean_failed_jobs(conn: sqlite3.Connection):
+    with _lock:
+        conn.rollback()
+        conn.execute("DELETE FROM jobs WHERE status='failed'")
+        conn.commit()
+
+
 BACKUP_DIR = Path('/data/backups')
 
 def backup(conn: sqlite3.Connection, backup_dir: Path = BACKUP_DIR, keep: int = 7) -> Path:
