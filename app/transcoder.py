@@ -120,7 +120,7 @@ def probe(path: Path) -> dict | None:
         if not video:
             return None
         return {
-            'codec':    video.get('codec_name', '').lower(),
+            'codec':    (video.get('codec_name') or 'unknown').lower(),
             'duration': float(data.get('format', {}).get('duration', 0)),
             'cq':       data.get('format', {}).get('tags', {}).get('nvtranscode_cq', ''),
         }
