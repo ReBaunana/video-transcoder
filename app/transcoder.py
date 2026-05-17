@@ -264,9 +264,12 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             'started_at': started.isoformat(),
         }
 
+    _cuvid_map = {'h264': 'h264_cuvid', 'hevc': 'hevc_cuvid'}
+    _decoder   = _cuvid_map.get(codec)
     cmd = [
         'ffmpeg', '-y',
         '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
+    ] + (['-c:v', _decoder] if _decoder else []) + [
         '-i', str(path),
         '-c:v', 'hevc_nvenc', '-cq', _cq, '-preset', _preset,
         '-c:a', 'copy', '-c:s', 'copy',
