@@ -2509,7 +2509,9 @@
     }
   }
 
+  let _activeJobFilter = 'all';
   function filterJobs(btn, status) {
+    _activeJobFilter = status;
     document.querySelectorAll('#jobsBody tr[data-status]').forEach(r => {
       r.style.display = (status === 'all' || r.dataset.status === status) ? '' : 'none';
     });
@@ -2648,6 +2650,66 @@
     } catch (_) {}
   }
 
+  /* ── Jobs table live refresh ────────────────────────────────────────── */
+  let _lastJobsHash = '';
+
+  function _esc(s) {
+    return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function _buildJobRow(j) {
+    const fname    = j.filename.length > 48 ? j.filename.slice(0,48) + '…' : j.filename;
+    const srcMb    = Math.round((j.src_size || 0) / 1e6) + ' MB';
+    const dstMb    = j.dest_size ? Math.round(j.dest_size / 1e6) + ' MB' : '—';
+    let savedHtml  = '—';
+    if (j.dest_size && j.src_size && j.src_size > 0) {
+      const pct = (j.src_size - j.dest_size) / j.src_size * 100;
+      if      (pct > 0) savedHtml = `<span class="pct-saved">&minus;${Math.round(pct)}%</span>`;
+      else if (pct < 0) savedHtml = `<span class="pct-bigger">+${Math.round(Math.abs(pct))}%</span>`;
+      else              savedHtml = '<span class="td-dim">0%</span>';
+    }
+    const elapsed  = j.elapsed_s ? Math.round(j.elapsed_s) + ' s' : '—';
+    const errAttr  = j.error ? ` title="${_esc(j.error)}"` : '';
+    const mHidden  = _hiddenMounts.has(j.mount || '') ? ' mount-hidden' : '';
+    const fHidden  = (_activeJobFilter !== 'all' && j.status !== _activeJobFilter) ? ' style="display:none"' : '';
+    return `<tr data-status="${j.status}" data-mount="${_esc(j.mount)}" class="${mHidden}"${fHidden}>` +
+      `<td class="td-file">${_esc(fname)}</td>` +
+      `<td class="td-dim">${_esc(j.mount) || '—'}</td>` +
+      `<td class="td-dim">${_esc(j.src_codec) || '—'}</td>` +
+      `<td class="td-num">${_esc(j.cq) || '—'}</td>` +
+      `<td class="td-num">${srcMb}</td>` +
+      `<td class="td-num">${dstMb}</td>` +
+      `<td>${savedHtml}</td>` +
+      `<td class="td-num">${elapsed}</td>` +
+      `<td><span class="badge badge-${j.status}"${errAttr}>${j.status}</span></td>` +
+      `</tr>`;
+  }
+
+  function _refreshJobsTable(jobs) {
+    const fp = (jobs.length ? jobs[0].id : 0) + ':' + jobs.length;
+    if (fp === _lastJobsHash) return;
+    _lastJobsHash = fp;
+
+    const body = document.getElementById('jobsBody');
+    if (!body) return;
+    body.innerHTML = jobs.length
+      ? jobs.map(_buildJobRow).join('')
+      : '<tr class="empty-row"><td colspan="9">No jobs recorded yet</td></tr>';
+
+    _applyMountFilter();
+
+    const doneN    = jobs.filter(j => j.status === 'done').length;
+    const failedN  = jobs.filter(j => j.status === 'failed').length;
+    const runningN = jobs.filter(j => j.status === 'running').length;
+    const pills    = document.querySelector('.filter-pills');
+    if (!pills) return;
+    pills.innerHTML =
+      `<button class="filter-pill${_activeJobFilter==='all'?' fp-active':''}" data-filter="all" onclick="filterJobs(this,'all')">All ${jobs.length}</button>` +
+      (doneN    ? `<button class="filter-pill${_activeJobFilter==='done'?' fp-active fp-done':''}" data-filter="done" onclick="filterJobs(this,'done')">Done ${doneN}</button>` : '') +
+      (failedN  ? `<button class="filter-pill${_activeJobFilter==='failed'?' fp-active fp-failed':''}" data-filter="failed" onclick="filterJobs(this,'failed')">Failed ${failedN}</button>` : '') +
+      (runningN ? `<button class="filter-pill${_activeJobFilter==='running'?' fp-active':''}" data-filter="running" onclick="filterJobs(this,'running')">Running ${runningN}</button>` : '');
+  }
+
   /* ── Live polling — updates DOM in place, reloads only on state flip ── */
   let _prevRunning = {{ 'true' if state.running else 'false' }};
   const _schedHour = {{ schedule_hour }};
@@ -2762,6 +2824,9 @@
           el.textContent = done + '/' + total + ' done';
         }
       }
+
+      // Refresh jobs table in-place — works on mobile even when tab was backgrounded
+      fetch('/api/jobs').then(r => r.json()).then(j => _refreshJobsTable(j.jobs)).catch(() => {});
     } catch (_) {}
   }, 3000);
 

@@ -291,6 +291,11 @@ async def api_status():
     })
 
 
+@app.get('/api/jobs')
+async def api_jobs():
+    return JSONResponse({'jobs': get_recent_jobs(db, 50)})
+
+
 @app.get('/api/sysinfo')
 async def api_sysinfo():
     rx, tx = _read_net_mbps()
