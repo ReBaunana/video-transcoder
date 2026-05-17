@@ -1818,31 +1818,25 @@
       <div class="mount-info">
         <div class="mount-name">/media/{{ m.name }}</div>
         <div class="mount-meta">
-          {% set mt = state.mount_totals.get(m.name, 0) %}
-          {% if m.done %}
-          <span class="mount-stat green" id="mstat-done-{{ m.name }}">{{ m.done }}{% if mt %}/{{ mt }}{% endif %} done</span>
-          {% elif mt %}
-          <span class="mount-stat" id="mstat-done-{{ m.name }}">0/{{ mt }} done</span>
+          {% set mt  = state.mount_totals.get(m.name, 0) %}
+          {% set cm  = cache_mount_stats.get(m.name, {}) %}
+          {% set cdone  = cm.get('done', 0) %}
+          {% set ctotal = cm.get('total', 0) - cm.get('corrupt', 0) %}
+          {% set dtotal = mt if mt else ctotal %}
+          {% if dtotal or cdone %}
+          <span class="mount-stat {{ 'green' if cdone else '' }}" id="mstat-done-{{ m.name }}">{{ cdone }}/{{ dtotal }} done</span>
+          {% else %}
+          <span class="mount-stat" id="mstat-done-{{ m.name }}">not yet scanned</span>
           {% endif %}
           {% if m.failed %}
           <span class="mount-stat red">{{ m.failed }} failed</span>
           {% endif %}
-          {% if m.src_bytes %}
-          {% set saved = (m.src_bytes - m.dest_bytes) / 1073741824 %}
-          <span class="mount-stat {{ 'green' if saved > 0 else 'red' }}">
-            {{ '%+.1f'|format(saved) }} GB
-          </span>
-          {% endif %}
-          {% if not m.done and not m.failed and not mt %}
-          {% set cm = cache_mount_stats.get(m.name, {}) %}
-          {% if cm.get('total', 0) %}
-          <span class="mount-stat">{{ cm.total }} cached</span>
           {% if cm.get('corrupt', 0) %}
           <span class="mount-stat red">{{ cm.corrupt }} corrupt</span>
           {% endif %}
-          {% else %}
-          <span class="mount-stat">not yet scanned</span>
-          {% endif %}
+          {% if m.src_bytes %}
+          {% set saved = (m.src_bytes - m.dest_bytes) / 1073741824 %}
+          <span class="mount-stat {{ 'green' if saved > 0 else 'red' }}">{{ '%+.1f'|format(saved) }} GB</span>
           {% endif %}
         </div>
       </div>
