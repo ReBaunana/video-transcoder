@@ -421,7 +421,7 @@ async def api_cache_prune():
     if transcoder.state['running']:
         return JSONResponse({'ok': False, 'msg': 'Stop the scan before pruning cache'}, status_code=409)
     pruned = prune_stale_cache(db)
-    log.info(f'Pruned {pruned} stale cache entries')
+    logging.info(f'Pruned {pruned} stale cache entries')
     return JSONResponse({'ok': True, 'pruned': pruned})
 
 
