@@ -5,7 +5,6 @@ import queue as _queue
 import re
 import subprocess
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -454,7 +453,8 @@ def run_scan(db):
                     p = Path(root) / name
                     if p.suffix.lower() not in VIDEO_EXTENSIONS:
                         continue
-                    state['mount_totals'][mount.name] += 1  # GIL-safe int increment
+                    # Key was inserted under _lock above; += 1 on an existing int is GIL-safe.
+                    state['mount_totals'][mount.name] += 1
                     file_q.put(p)
 
     finally:
