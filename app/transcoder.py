@@ -138,38 +138,58 @@ def _parse_time(s: str) -> float:
 
 _NVENC_SESSION_LIMIT = 'OpenEncodeSessionEx failed'
 
-_fps_re = re.compile(r'\bfps=\s*(\d+(?:\.\d+)?)')
+_fps_re   = re.compile(r'\bfps=\s*(\d+(?:\.\d+)?)')
+_time_re  = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
+_noise_re = re.compile(r'frame=|fps=|speed=|time=|bitrate=|size=')
+
+# RTX 30xx with driver 510+: typically 5 concurrent sessions; older/laptop: 3.
+# Override with NVENC_MAX_SESSIONS env var if you hit session errors at high worker counts.
+_NVENC_SEM = threading.BoundedSemaphore(int(os.getenv('NVENC_MAX_SESSIONS', '3')))
+
+# Hardware decoders available on Ampere (RTX 30xx) and newer.
+# av1_cuvid requires Ampere+; mpeg4_cuvid can fail on malformed DivX/Xvid headers
+# but the CPU-decode fallback in transcode_file handles that transparently.
+_CUVID_MAP = {
+    'h264':       'h264_cuvid',
+    'hevc':       'hevc_cuvid',
+    'mpeg2video': 'mpeg2_cuvid',
+    'mpeg4':      'mpeg4_cuvid',
+    'vc1':        'vc1_cuvid',
+    'wmv3':       'vc1_cuvid',
+    'vp8':        'vp8_cuvid',
+    'vp9':        'vp9_cuvid',
+    'av1':        'av1_cuvid',
+}
 
 def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> tuple[int, str]:
     """Return (returncode, stderr_tail).  rc=-1 means stopped by request."""
-    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
-    time_re    = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
-    noise_re   = re.compile(r'frame=|fps=|speed=|time=|bitrate=|size=')
     stderr_tail: list[str] = []
-    try:
-        for line in proc.stderr:
-            if _stop.is_set():
+    with _NVENC_SEM:
+        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
+        try:
+            for line in proc.stderr:
+                if _stop.is_set():
+                    proc.terminate()
+                    proc.wait()
+                    return -1, ''
+                with _lock:
+                    w = state['workers'].get(slot_id)
+                    if w:
+                        m = _time_re.search(line)
+                        if m and duration > 0:
+                            w['progress'] = min(_parse_time(m.group(1)) / duration * 100, 99.9)
+                        fm = _fps_re.search(line)
+                        if fm:
+                            w['fps'] = float(fm.group(1))
+                stripped = line.strip()
+                if stripped and not _noise_re.search(stripped):
+                    stderr_tail.append(stripped)
+                    if len(stderr_tail) > 8:
+                        stderr_tail.pop(0)
+        finally:
+            if proc.poll() is None:
                 proc.terminate()
-                proc.wait()
-                return -1, ''
-            with _lock:
-                w = state['workers'].get(slot_id)
-                if w:
-                    m = time_re.search(line)
-                    if m and duration > 0:
-                        w['progress'] = min(_parse_time(m.group(1)) / duration * 100, 99.9)
-                    fm = _fps_re.search(line)
-                    if fm:
-                        w['fps'] = float(fm.group(1))
-            stripped = line.strip()
-            if stripped and not noise_re.search(stripped):
-                stderr_tail.append(stripped)
-                if len(stderr_tail) > 8:
-                    stderr_tail.pop(0)
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
-        proc.wait()
+            proc.wait()
     return proc.returncode, '\n'.join(stderr_tail)
 
 
@@ -191,6 +211,25 @@ def cleanup_leftover_temps():
 
 
 # ── Core transcoding ──────────────────────────────────────────────────────────
+
+def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
+              decoder: str | None = None) -> list[str]:
+    cmd = ['ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
+    if decoder:
+        cmd += ['-c:v', decoder]
+    cmd += [
+        '-i', str(path),
+        '-c:v', 'hevc_nvenc', '-cq', cq, '-preset', preset,
+        '-rc-lookahead', '0', '-multipass', 'disabled',
+        '-b_ref_mode', '0', '-bf', '0',
+        '-c:a', 'copy', '-c:s', 'copy',
+        '-metadata', f'nvtranscode_cq={cq}',
+    ]
+    if out_ext == '.mp4':
+        cmd += ['-movflags', '+faststart']
+    cmd.append(str(tmp))
+    return cmd
+
 
 def transcode_file(path: Path, db, slot_id: int) -> str:
     from app.database import record_start, record_finish, cache_get, cache_set
@@ -264,31 +303,20 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             'started_at': started.isoformat(),
         }
 
-    _cuvid_map = {'h264': 'h264_cuvid', 'hevc': 'hevc_cuvid'}
-    _decoder   = _cuvid_map.get(codec)
-    cmd = [
-        'ffmpeg', '-y',
-        '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
-    ] + (['-c:v', _decoder] if _decoder else []) + [
-        '-i', str(path),
-        '-c:v', 'hevc_nvenc', '-cq', _cq, '-preset', _preset,
-        '-c:a', 'copy', '-c:s', 'copy',
-        '-metadata', f'nvtranscode_cq={_cq}',
-    ]
-    if out_ext == '.mp4':
-        cmd += ['-movflags', '+faststart']
-    cmd.append(str(tmp))
+    _decoder = _CUVID_MAP.get(codec)
+    cmd      = _make_cmd(path, out_ext, _cq, _preset, tmp, decoder=_decoder)
 
     rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
     elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
 
-    # NVENC session limit hit — one retry after a short wait
-    if rc not in (0, -1) and _NVENC_SESSION_LIMIT in err:
-        log.warning(f'[W{slot_id}]   NVENC session limit — waiting 15 s then retrying')
-        time.sleep(15)
+    # HW decode failure → retry once with CPU decode (handles bad mpeg4/cuvid headers etc.)
+    if rc not in (0, -1) and _decoder:
+        tmp.unlink(missing_ok=True)
+        log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) — retrying with CPU decode')
         with _lock:
             if state['workers'].get(slot_id):
                 state['workers'][slot_id]['progress'] = 0.0
+        cmd = _make_cmd(path, out_ext, _cq, _preset, tmp)
         rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
@@ -406,14 +434,9 @@ def run_scan(db):
                 log.info(f'--- {mount.name} --- (disabled, skipping)')
                 continue
             log.info(f'--- {mount.name} ---')
-            total = sum(
-                1 for r, _, fs in os.walk(mount)
-                for f in fs
-                if Path(f).suffix.lower() in VIDEO_EXTENSIONS and '.transcoding.' not in f
-            )
             with _lock:
                 state['current_mount'] = mount.name
-                state['mount_totals'][mount.name] = total
+                state['mount_totals'][mount.name] = 0
 
             for root, dirs, files in os.walk(mount, topdown=True):
                 dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
@@ -431,6 +454,7 @@ def run_scan(db):
                     p = Path(root) / name
                     if p.suffix.lower() not in VIDEO_EXTENSIONS:
                         continue
+                    state['mount_totals'][mount.name] += 1  # GIL-safe int increment
                     file_q.put(p)
 
     finally:
