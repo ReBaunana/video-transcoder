@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -185,6 +186,48 @@ def clean_jobs(conn: sqlite3.Connection):
         conn.rollback()
         conn.execute("DELETE FROM jobs")
         conn.commit()
+
+
+def prune_stale_cache(conn: sqlite3.Connection) -> int:
+    """Delete file_cache rows whose path no longer exists on disk.
+
+    Skips pruning for any mount whose root directory is inaccessible (e.g. NAS
+    offline), so a transient unmount cannot wipe the entire cache.
+    Returns the number of deleted entries.
+    """
+    with _lock:
+        conn.rollback()
+        rows = conn.execute("SELECT path FROM file_cache").fetchall()
+
+    # Group paths by mount root (first two components, e.g. /media/ddMovie)
+    by_mount: dict[str, list[str]] = {}
+    for (path,) in rows:
+        parts = path.split('/')
+        mount_root = '/' + '/'.join(parts[1:3]) if len(parts) >= 3 else '/'
+        by_mount.setdefault(mount_root, []).append(path)
+
+    stale: list[str] = []
+    for mount_root, paths in by_mount.items():
+        if not os.path.isdir(mount_root):
+            continue  # mount unavailable — skip to avoid false positives
+        for p in paths:
+            if not os.path.exists(p):
+                stale.append(p)
+
+    if not stale:
+        return 0
+
+    with _lock:
+        deleted = 0
+        for i in range(0, len(stale), 500):
+            batch = stale[i:i + 500]
+            cur = conn.execute(
+                f"DELETE FROM file_cache WHERE path IN ({','.join('?' * len(batch))})",
+                batch,
+            )
+            deleted += cur.rowcount
+        conn.commit()
+    return deleted
 
 
 def clean_failed_jobs(conn: sqlite3.Connection):

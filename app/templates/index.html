@@ -1700,6 +1700,10 @@
             <button class="adv-sub-btn" onclick="execCleanJobs()">Start Clean</button>
           </div>
         </div>
+        <button class="adv-item" id="pruneCacheBtn" onclick="pruneStaleCache()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Prune Stale Cache
+        </button>
         <button class="adv-item danger" onclick="resetDB()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Reset DB
@@ -2558,6 +2562,24 @@
       window.location.href = '/?_=' + Date.now();
     } catch (e) {
       showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  async function pruneStaleCache() {
+    toggleAdv();
+    const running = !!document.getElementById('statusPill')?.classList.contains('running');
+    if (running) { showToast('Stop the scan first', 'error'); return; }
+    const btn = document.getElementById('pruneCacheBtn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/cache/prune', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) { showToast(d.msg || 'Prune failed', 'error'); return; }
+      showToast(`Pruned ${d.pruned} stale cache ${d.pruned === 1 ? 'entry' : 'entries'}`, 'success');
+    } catch (e) {
+      showToast('Prune failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
     }
   }
 
