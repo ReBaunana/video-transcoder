@@ -335,6 +335,11 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
                 cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
                 return 'skipped'
 
+    # VAAPI: skip files above 1080p — CPU software-decode of 4K costs too much CPU
+    if backend == 'vaapi' and info.get('height', 0) > 1080:
+        log.info(f'[W{slot_id}] VAAPI skip {path.name} [{info.get("height", 0)}p > 1080p, defer to NVENC]')
+        return 'skipped'
+
     # Layer 1: skip files unlikely to shrink based on bitrate vs resolution
     if not _admission_ok(info):
         log.info(
