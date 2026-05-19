@@ -262,12 +262,13 @@ def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
 
 
 def _make_vaapi_cmd(path: Path, out_ext: str, cq: str, tmp: Path) -> list[str]:
+    # CPU decode → upload to VAAPI surface → Intel GPU encode
+    # (-hwaccel vaapi -hwaccel_output_format vaapi omitted: no VAAPI decoders in this build)
     cmd = [
         'ffmpeg', '-y',
-        '-hwaccel', 'vaapi',
-        '-hwaccel_device', _VAAPI_DEVICE,
-        '-hwaccel_output_format', 'vaapi',
+        '-vaapi_device', _VAAPI_DEVICE,
         '-i', str(path),
+        '-vf', 'format=nv12,hwupload',
         '-c:v', 'hevc_vaapi', '-global_quality', cq,
         '-c:a', 'copy', '-c:s', 'copy',
         '-metadata', f'nvtranscode_cq={cq}',
