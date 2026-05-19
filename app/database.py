@@ -106,10 +106,11 @@ def get_codec_stats(conn) -> list:
 
 
 def cache_get(conn, path: str, size: int, mtime: float) -> dict | None:
-    row = conn.execute(
-        "SELECT codec, duration, cq FROM file_cache WHERE path=? AND size=? AND mtime=?",
-        (path, size, mtime),
-    ).fetchone()
+    with _lock:
+        row = conn.execute(
+            "SELECT codec, duration, cq FROM file_cache WHERE path=? AND size=? AND mtime=?",
+            (path, size, mtime),
+        ).fetchone()
     return dict(row) if row else None
 
 
