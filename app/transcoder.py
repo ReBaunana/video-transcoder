@@ -264,8 +264,10 @@ def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
 def _make_vaapi_cmd(path: Path, out_ext: str, cq: str, tmp: Path) -> list[str]:
     # CPU decode → upload to VAAPI surface → Intel GPU encode
     # (-hwaccel vaapi -hwaccel_output_format vaapi omitted: no VAAPI decoders in this build)
+    # -threads 2: cap software-decode thread count to avoid pinning CPU cores
     cmd = [
         'ffmpeg', '-y',
+        '-threads', '2',
         '-vaapi_device', _VAAPI_DEVICE,
         '-i', str(path),
         '-vf', 'format=nv12,hwupload',
@@ -335,9 +337,9 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
                 cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
                 return 'skipped'
 
-    # VAAPI: skip files above 1080p — CPU software-decode of 4K costs too much CPU
-    if backend == 'vaapi' and info.get('height', 0) > 1080:
-        log.info(f'[W{slot_id}] VAAPI skip {path.name} [{info.get("height", 0)}p > 1080p, defer to NVENC]')
+    # VAAPI: skip files above 720p — CPU software-decode of 1080p/4K costs too many cores
+    if backend == 'vaapi' and info.get('height', 0) > 720:
+        log.info(f'[W{slot_id}] VAAPI skip {path.name} [{info.get("height", 0)}p > 720p, defer to NVENC]')
         return 'skipped'
 
     # Layer 1: skip files unlikely to shrink based on bitrate vs resolution
