@@ -359,6 +359,18 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         f'  ({dest_size / src_size * 100:.0f}%)  {elapsed:.0f}s'
     )
 
+    if dest_size >= src_size:
+        tmp.unlink(missing_ok=True)
+        log.warning(
+            f'[W{slot_id}]   size guard: output {dest_size / 1e6:.0f}MB >= source {src_size / 1e6:.0f}MB'
+            f' ({dest_size / src_size * 100:.0f}%) — keeping original'
+        )
+        record_finish(db, job_id, 'skipped', dest_size, elapsed, 'size guard: output not smaller')
+        cache_set(db, str(path), st.st_size, st.st_mtime, 'hevc', out_info['duration'], cq=_cq)
+        with _lock:
+            state['workers'][slot_id] = None
+        return 'skipped'
+
     tmp.replace(dest)           # atomic rename first — dest is safe
     if dest != path:
         path.unlink(missing_ok=True)  # only then remove the original
