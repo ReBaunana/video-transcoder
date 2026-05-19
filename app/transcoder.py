@@ -19,7 +19,8 @@ PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
 DRY_RUN                = os.getenv('DRY_RUN', 'false').lower() == 'true'
 RETRANSCODE_ORIGINALS  = False
 DISABLED_MOUNTS: set   = set()
-WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))
+WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))    # NVENC workers
+VAAPI_WORKERS      = int(os.getenv('VAAPI_WORKERS', '0'))             # Intel VAAPI workers
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
 SCHEDULE_HOUR      = int(os.getenv('SCHEDULE_HOUR', '3'))       # -1 = disabled
@@ -40,7 +41,7 @@ OUTPUT_EXT = {
 state: dict = {
     'running':       False,
     'stopping':      False,
-    'workers':       {},   # {slot_id: None | {'file', 'codec', 'progress', 'fps', 'started_at'}}
+    'workers':       {},   # {slot_id: None | {'file', 'codec', 'progress', 'fps', 'started_at', 'backend'}}
     'current_mount': None,
     'mount_totals':  {},   # {mount_name: total_video_file_count}
     'session':       {'done': 0, 'failed': 0, 'skipped': 0},
@@ -53,7 +54,7 @@ _lock      = threading.Lock()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
+    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -69,14 +70,15 @@ def load_settings():
         RETRANSCODE_ORIGINALS  = bool(data.get('retranscode_originals', RETRANSCODE_ORIGINALS))
         DISABLED_MOUNTS        = set(data.get('disabled_mounts', list(DISABLED_MOUNTS)))
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
+        VAAPI_WORKERS     = max(0, min(int(data.get('vaapi_workers', VAAPI_WORKERS)), 3))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
         if 'schedule_hour' in data:
             SCHEDULE_HOUR = max(-1, min(int(data['schedule_hour']), 23))
         log.info(
             f'Settings loaded: CQ={CQ} preset={PRESET} dry_run={DRY_RUN} '
-            f'workers={WORKERS} backup_interval_h={BACKUP_INTERVAL_H} backup_keep={BACKUP_KEEP} '
-            f'schedule_hour={SCHEDULE_HOUR}'
+            f'workers={WORKERS} vaapi_workers={VAAPI_WORKERS} backup_interval_h={BACKUP_INTERVAL_H} '
+            f'backup_keep={BACKUP_KEEP} schedule_hour={SCHEDULE_HOUR}'
         )
     except FileNotFoundError:
         pass
@@ -90,7 +92,8 @@ def save_settings():
         tmp = SETTINGS_PATH.with_suffix('.json.tmp')
         tmp.write_text(json.dumps({
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
-            'workers': WORKERS, 'backup_interval_h': BACKUP_INTERVAL_H,
+            'workers': WORKERS, 'vaapi_workers': VAAPI_WORKERS,
+            'backup_interval_h': BACKUP_INTERVAL_H,
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
             'retranscode_originals': RETRANSCODE_ORIGINALS,
             'disabled_mounts':       sorted(DISABLED_MOUNTS),
@@ -122,6 +125,8 @@ def probe(path: Path) -> dict | None:
             'codec':    (video.get('codec_name') or 'unknown').lower(),
             'duration': float(data.get('format', {}).get('duration', 0)),
             'cq':       data.get('format', {}).get('tags', {}).get('nvtranscode_cq', ''),
+            'bitrate':  int(data.get('format', {}).get('bit_rate', 0)) // 1000,  # kbps
+            'height':   video.get('height', 0),
         }
     except Exception:
         return None
@@ -145,9 +150,13 @@ _noise_re = re.compile(r'frame=|fps=|speed=|time=|bitrate=|size=')
 # Override with NVENC_MAX_SESSIONS env var if you hit session errors at high worker counts.
 _NVENC_SEM = threading.BoundedSemaphore(int(os.getenv('NVENC_MAX_SESSIONS', '3')))
 
+# Intel VAAPI semaphore — controls max concurrent hevc_vaapi encodes.
+_VAAPI_SEM    = threading.BoundedSemaphore(int(os.getenv('VAAPI_MAX_SESSIONS', '3')))
+_VAAPI_DEVICE = os.getenv('VAAPI_DEVICE', '/dev/dri/renderD128')
+
 # Hardware decoders available on Ampere (RTX 30xx) and newer.
 # av1_cuvid requires Ampere+; mpeg4_cuvid can fail on malformed DivX/Xvid headers
-# but the CPU-decode fallback in transcode_file handles that transparently.
+# but the Intel VAAPI or CPU-decode fallback in transcode_file handles that transparently.
 _CUVID_MAP = {
     'h264':       'h264_cuvid',
     'hevc':       'hevc_cuvid',
@@ -160,10 +169,31 @@ _CUVID_MAP = {
     'av1':        'av1_cuvid',
 }
 
-def _run_ffmpeg(cmd: list, duration: float, slot_id: int) -> tuple[int, str]:
+# Admission thresholds: (min_height_px, min_bitrate_kbps).
+# Files below the kbps threshold for their resolution are skipped before encoding —
+# they are already compact and hevc_nvenc/vaapi is unlikely to shrink them further.
+_ADMISSION_THRESHOLDS = [(2160, 8000), (1080, 3000), (720, 1500), (0, 800)]
+
+
+def _admission_ok(info: dict) -> bool:
+    """Return True if the file is likely to shrink; False to skip before encoding."""
+    bitrate = info.get('bitrate', 0)
+    if bitrate <= 0:
+        return True  # can't determine — let the size guard decide
+    h = info.get('height', 0)
+    for min_h, threshold in _ADMISSION_THRESHOLDS:
+        if h >= min_h:
+            return bitrate >= threshold
+    return True
+
+
+def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
+                sem=None) -> tuple[int, str]:
     """Return (returncode, stderr_tail).  rc=-1 means stopped by request."""
+    if sem is None:
+        sem = _NVENC_SEM
     stderr_tail: list[str] = []
-    with _NVENC_SEM:
+    with sem:
         proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
         try:
             for line in proc.stderr:
@@ -213,7 +243,8 @@ def cleanup_leftover_temps():
 
 def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
               decoder: str | None = None) -> list[str]:
-    cmd = ['ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
+    # -hwaccel_output_format cuda omitted — causes filter reinit errors under concurrent load
+    cmd = ['ffmpeg', '-y', '-hwaccel', 'cuda']
     if decoder:
         cmd += ['-c:v', decoder]
     cmd += [
@@ -230,7 +261,24 @@ def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
     return cmd
 
 
-def transcode_file(path: Path, db, slot_id: int) -> str:
+def _make_vaapi_cmd(path: Path, out_ext: str, cq: str, tmp: Path) -> list[str]:
+    cmd = [
+        'ffmpeg', '-y',
+        '-hwaccel', 'vaapi',
+        '-hwaccel_device', _VAAPI_DEVICE,
+        '-hwaccel_output_format', 'vaapi',
+        '-i', str(path),
+        '-c:v', 'hevc_vaapi', '-global_quality', cq,
+        '-c:a', 'copy', '-c:s', 'copy',
+        '-metadata', f'nvtranscode_cq={cq}',
+    ]
+    if out_ext == '.mp4':
+        cmd += ['-movflags', '+faststart']
+    cmd.append(str(tmp))
+    return cmd
+
+
+def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
     from app.database import record_start, record_finish, cache_get, cache_set
     _cq, _preset = CQ, PRESET  # snapshot globals; they may change while we transcode
 
@@ -249,6 +297,9 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         if codec in SKIP_CODECS:
             return 'skipped'
         if cached_cq == f'guard:{_cq}':
+            return 'skipped'
+        # Intel tried and failed at this CQ — VAAPI skips again, NVENC gets a shot next scan
+        if backend == 'vaapi' and cached_cq == f'guard_intel:{_cq}':
             return 'skipped'
         if codec in IDEAL_CODECS:
             if cached_cq == _cq:
@@ -283,16 +334,27 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
                 cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
                 return 'skipped'
 
+    # Layer 1: skip files unlikely to shrink based on bitrate vs resolution
+    if not _admission_ok(info):
+        log.info(
+            f'[W{slot_id}] ADMISSION skip {path.name} '
+            f'[{info.get("height", 0)}p @ {info.get("bitrate", 0)} kbps]'
+        )
+        prior_cq = cached.get('cq', '') if cached else ''
+        cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
+        cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=cq_to_store)
+        return 'skipped'
+
     out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
     tmp      = path.with_name(path.stem + '.transcoding' + out_ext)
     dest     = path.with_suffix(out_ext)
     mount    = path.parts[2] if len(path.parts) > 2 else ''
     src_size = st.st_size
 
-    log.info(f'[W{slot_id}] TRANSCODE  {path.name}  [{codec}→hevc_nvenc CQ{_cq}]  {src_size / 1e6:.0f}MB')
+    log.info(f'[W{slot_id}/{backend}] TRANSCODE  {path.name}  [{codec}->hevc_{backend} CQ{_cq}]  {src_size / 1e6:.0f}MB')
 
     if DRY_RUN:
-        log.info(f'[W{slot_id}]   DRY_RUN – skip')
+        log.info(f'[W{slot_id}]   DRY_RUN - skip')
         return 'skipped'
 
     job_id  = record_start(db, str(path), path.name, codec, src_size, mount, cq=_cq)
@@ -305,24 +367,37 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
             'progress':   0.0,
             'fps':        0.0,
             'started_at': started.isoformat(),
+            'backend':    backend,
         }
 
-    _decoder = _CUVID_MAP.get(codec)
-    cmd      = _make_cmd(path, out_ext, _cq, _preset, tmp, decoder=_decoder)
-
-    rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
-    elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
-
-    # HW decode failure → retry once with CPU decode (handles bad mpeg4/cuvid headers etc.)
-    if rc not in (0, -1) and _decoder:
-        tmp.unlink(missing_ok=True)
-        log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) — retrying with CPU decode')
-        with _lock:
-            if state['workers'].get(slot_id):
-                state['workers'][slot_id]['progress'] = 0.0
-        cmd = _make_cmd(path, out_ext, _cq, _preset, tmp)
-        rc, err = _run_ffmpeg(cmd, info['duration'], slot_id)
+    if backend == 'vaapi':
+        cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp)
+        rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM)
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    else:
+        _decoder = _CUVID_MAP.get(codec)
+        cmd      = _make_cmd(path, out_ext, _cq, _preset, tmp, decoder=_decoder)
+        rc, err  = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_NVENC_SEM)
+        elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
+
+        # HW decode failure -> retry with Intel VAAPI (if enabled) or CPU decode
+        if rc not in (0, -1) and _decoder:
+            tmp.unlink(missing_ok=True)
+            with _lock:
+                if state['workers'].get(slot_id):
+                    state['workers'][slot_id]['progress'] = 0.0
+            if VAAPI_WORKERS > 0:
+                log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- retrying with Intel VAAPI')
+                with _lock:
+                    if state['workers'].get(slot_id):
+                        state['workers'][slot_id]['backend'] = 'vaapi'
+                cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp)
+                rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM)
+            else:
+                log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- retrying with CPU decode')
+                cmd = _make_cmd(path, out_ext, _cq, _preset, tmp)
+                rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_NVENC_SEM)
+            elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
     if rc != 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
@@ -360,7 +435,7 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
 
     dest_size = tmp.stat().st_size
     log.info(
-        f'[W{slot_id}]   {src_size / 1e6:.0f}MB → {dest_size / 1e6:.0f}MB'
+        f'[W{slot_id}]   {src_size / 1e6:.0f}MB -> {dest_size / 1e6:.0f}MB'
         f'  ({dest_size / src_size * 100:.0f}%)  {elapsed:.0f}s'
     )
 
@@ -368,17 +443,21 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         tmp.unlink(missing_ok=True)
         log.warning(
             f'[W{slot_id}]   size guard: output {dest_size / 1e6:.0f}MB >= source {src_size / 1e6:.0f}MB'
-            f' ({dest_size / src_size * 100:.0f}%) — keeping original'
+            f' ({dest_size / src_size * 100:.0f}%) -- keeping original'
         )
         record_finish(db, job_id, 'skipped', None, elapsed, 'size guard: output not smaller')
         prior_cq = cached.get('cq', '') if cached else ''
-        cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
+        if backend == 'vaapi':
+            # Intel failed -- NVENC will retry next scan
+            cq_to_store = f'guard_intel:{_cq}'
+        else:
+            cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
         cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=cq_to_store)
         with _lock:
             state['workers'][slot_id] = None
         return 'skipped'
 
-    tmp.replace(dest)           # atomic rename first — dest is safe
+    tmp.replace(dest)           # atomic rename first -- dest is safe
     if dest != path:
         path.unlink(missing_ok=True)  # only then remove the original
 
@@ -403,18 +482,20 @@ def run_scan(db):
         if state['running']:
             log.warning('Scan already running')
             return
+        _total = WORKERS + VAAPI_WORKERS
         state['running']  = True
         state['stopping'] = False
         state['session']  = {'done': 0, 'failed': 0, 'skipped': 0}
-        state['workers']  = {i: None for i in range(WORKERS)}
+        state['workers']  = {i: None for i in range(_total)}
     _stop.clear()
     _soft_stop.clear()
 
-    log.info(f'=== Scan started ({WORKERS} workers) ===')
+    log.info(f'=== Scan started ({WORKERS} NVENC + {VAAPI_WORKERS} VAAPI workers) ===')
 
     file_q: _queue.Queue = _queue.Queue()
+    _total = WORKERS + VAAPI_WORKERS
 
-    def _worker(slot_id: int):
+    def _worker(slot_id: int, backend: str):
         while True:
             path = file_q.get()
             if path is None:
@@ -424,7 +505,7 @@ def run_scan(db):
                 file_q.task_done()
                 continue
             try:
-                result = transcode_file(path, db, slot_id)
+                result = transcode_file(path, db, slot_id, backend=backend)
             except Exception:
                 log.exception(f'[W{slot_id}] unhandled error on {path}')
                 result = 'failed'
@@ -432,16 +513,22 @@ def run_scan(db):
                 state['session'][result] = state['session'].get(result, 0) + 1
             file_q.task_done()
 
-    threads = [
-        threading.Thread(target=_worker, args=(i,), daemon=True, name=f'worker-{i}')
-        for i in range(WORKERS)
-    ]
+    threads = []
+    for i in range(WORKERS):
+        threads.append(
+            threading.Thread(target=_worker, args=(i, 'nvenc'), daemon=True, name=f'worker-nvenc-{i}')
+        )
+    for i in range(VAAPI_WORKERS):
+        slot = WORKERS + i
+        threads.append(
+            threading.Thread(target=_worker, args=(slot, 'vaapi'), daemon=True, name=f'worker-vaapi-{i}')
+        )
     for t in threads:
         t.start()
 
     try:
         if not MEDIA_ROOT.exists():
-            log.error(f'{MEDIA_ROOT} not found — check volume mounts')
+            log.error(f'{MEDIA_ROOT} not found -- check volume mounts')
             return
 
         mounts = sorted(p for p in MEDIA_ROOT.iterdir() if p.is_dir())
@@ -465,7 +552,7 @@ def run_scan(db):
                     if _stop.is_set():
                         return
                     if _soft_stop.is_set():
-                        log.info('Soft stop — finishing current files')
+                        log.info('Soft stop -- finishing current files')
                         return
                     if '.transcoding.' in name:
                         continue
@@ -477,7 +564,7 @@ def run_scan(db):
                     file_q.put(p)
 
     finally:
-        for _ in range(WORKERS):
+        for _ in range(_total):
             file_q.put(None)
         for t in threads:
             t.join()

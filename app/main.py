@@ -273,7 +273,9 @@ async def dashboard(request: Request):
             'dry_run':            transcoder.DRY_RUN,
             'last_backup':        last_backup_at,
             'version':            APP_VERSION,
-            'workers_count':      transcoder.WORKERS,
+            'workers_count':      transcoder.WORKERS + transcoder.VAAPI_WORKERS,
+            'nvenc_workers':      transcoder.WORKERS,
+            'vaapi_workers':      transcoder.VAAPI_WORKERS,
             'backup_interval_h':  transcoder.BACKUP_INTERVAL_H,
             'backup_keep':        transcoder.BACKUP_KEEP,
             'corrupt_count':           len(get_corrupt_files(db)),
@@ -357,6 +359,7 @@ async def api_get_config():
         'dry_run':                transcoder.DRY_RUN,
         'retranscode_originals':  transcoder.RETRANSCODE_ORIGINALS,
         'workers':                transcoder.WORKERS,
+        'vaapi_workers':          transcoder.VAAPI_WORKERS,
         'backup_interval_h':      transcoder.BACKUP_INTERVAL_H,
         'backup_keep':            transcoder.BACKUP_KEEP,
         'schedule_hour':          transcoder.SCHEDULE_HOUR,
@@ -378,6 +381,8 @@ async def api_set_config(request: Request):
         transcoder.RETRANSCODE_ORIGINALS = bool(body['retranscode_originals'])
     if 'workers' in body:
         transcoder.WORKERS = max(1, min(int(body['workers']), 8))
+    if 'vaapi_workers' in body:
+        transcoder.VAAPI_WORKERS = max(0, min(int(body['vaapi_workers']), 3))
     if 'backup_interval_h' in body:
         transcoder.BACKUP_INTERVAL_H = max(0, int(body['backup_interval_h']))
     if 'backup_keep' in body:
@@ -392,6 +397,7 @@ async def api_set_config(request: Request):
         'dry_run':               transcoder.DRY_RUN,
         'retranscode_originals': transcoder.RETRANSCODE_ORIGINALS,
         'workers':               transcoder.WORKERS,
+        'vaapi_workers':         transcoder.VAAPI_WORKERS,
         'backup_interval_h':     transcoder.BACKUP_INTERVAL_H,
         'backup_keep':           transcoder.BACKUP_KEEP,
         'schedule_hour':         transcoder.SCHEDULE_HOUR,

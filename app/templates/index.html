@@ -969,6 +969,9 @@
       letter-spacing: -.01em;
     }
 
+    .tag-backend-nvenc { color: var(--green); border-color: rgba(52,211,153,.35); }
+    .tag-backend-vaapi  { color: var(--cyan);  border-color: rgba(103,232,249,.35); }
+
     .worker-idle-inner {
       display: flex;
       align-items: center;
@@ -1626,16 +1629,35 @@
       </svg>
       <select id="workersSelect" onchange="setWorkers(this.value)">
         {% for n in [1,2,3,4,5,6,7,8] %}
-        <option value="{{ n }}" {{ 'selected' if n == workers_count else '' }}>{{ n }}×</option>
+        <option value="{{ n }}" {{ 'selected' if n == nvenc_workers else '' }}>{{ n }}×</option>
         {% endfor %}
       </select>
       <div class="tip tip-below" style="left:auto;right:0;transform:none;">
-        <strong style="color:var(--text)">Job parallelization</strong><br>
-        How many files encode simultaneously.<br>
-        All streams share the single NVENC unit.<br><br>
+        <strong style="color:var(--text)">NVENC Workers (RTX 3050 Ti)</strong><br>
+        Parallel encodes on NVIDIA GPU.<br>
+        Max 3 concurrent NVENC sessions.<br><br>
         <span style="color:var(--green)">1–2×</span>&nbsp; most efficient per file<br>
-        <span style="color:var(--green)">3–4×</span>&nbsp; good I/O overlap &middot; recommended<br>
-        <span style="color:var(--text-muted)">5–8×</span>&nbsp; diminishing returns on RTX 3050 Ti
+        <span style="color:var(--green)">3×</span>&nbsp; max on RTX 3050 Ti<br>
+        <span style="color:var(--text-muted)">4–8×</span>&nbsp; will hit session limit
+      </div>
+    </div>
+    <div class="workers-select has-tip">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="6" height="18" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1"/>
+      </svg>
+      <select id="vaapiWorkersSelect" onchange="setVaapiWorkers(this.value)">
+        {% for n in [0,1,2,3] %}
+        <option value="{{ n }}" {{ 'selected' if n == vaapi_workers else '' }}>{% if n == 0 %}Intel off{% else %}{{ n }}× Intel{% endif %}</option>
+        {% endfor %}
+      </select>
+      <div class="tip tip-below" style="left:auto;right:0;transform:none;">
+        <strong style="color:var(--text)">Intel VAAPI Workers</strong><br>
+        Parallel encodes on Intel iGPU (hevc_vaapi).<br>
+        Intel files that fail size guard are retried<br>
+        by NVENC on the next scan.<br><br>
+        <span style="color:var(--green)">0</span>&nbsp; disabled (default)<br>
+        <span style="color:var(--green)">1–2×</span>&nbsp; recommended for AlderLake<br>
+        <span style="color:var(--text-muted)">3×</span>&nbsp; max sessions
       </div>
     </div>
     <button class="btn {{ 'btn-running' if state.running else 'btn-run' }}" id="btnRun"
@@ -1937,6 +1959,7 @@
       <div class="worker-header">
         <span class="worker-label">Worker {{ slot_id + 1 }}</span>
         {% if w %}
+        <span class="tag tag-backend-{{ w.backend or 'nvenc' }}" id="wbackend-{{ slot_id }}">{{ (w.backend or 'nvenc')|upper }}</span>
         <span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>
         {% endif %}
       </div>
@@ -2682,6 +2705,19 @@
     } catch (_) {}
   }
 
+  async function setVaapiWorkers(n) {
+    try {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaapi_workers: parseInt(n) }),
+      });
+      const d = await r.json();
+      const sel = document.getElementById('vaapiWorkersSelect');
+      if (sel) sel.value = d.vaapi_workers;
+    } catch (_) {}
+  }
+
   async function setWorkers(n) {
     try {
       const r = await fetch('/api/workers', {
@@ -2855,6 +2891,11 @@
             if (glow) glow.style.width = p + '%';
             if (pct)  pct.textContent  = p + '%';
             if (fps)  fps.textContent  = w.fps > 0 ? Math.round(w.fps) + ' fps' : '';
+            const badge = document.getElementById('wbackend-' + i);
+            if (badge && w.backend) {
+              badge.textContent  = w.backend.toUpperCase();
+              badge.className    = 'tag tag-backend-' + w.backend;
+            }
           }
         }
       }
