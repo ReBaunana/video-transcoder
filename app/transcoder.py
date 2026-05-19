@@ -239,13 +239,18 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
     except OSError:
         return 'failed'
 
+    if st.st_size == 0:
+        return 'failed'
+
     cached = cache_get(db, str(path), st.st_size, st.st_mtime)
     if cached:
         codec = cached['codec']
+        cached_cq = cached.get('cq', '')
         if codec in SKIP_CODECS:
             return 'skipped'
+        if cached_cq == f'guard:{_cq}':
+            return 'skipped'
         if codec in IDEAL_CODECS:
-            cached_cq = cached.get('cq', '')
             if cached_cq == _cq:
                 return 'skipped'
             if cached_cq == 'original' and not RETRANSCODE_ORIGINALS:
@@ -359,14 +364,16 @@ def transcode_file(path: Path, db, slot_id: int) -> str:
         f'  ({dest_size / src_size * 100:.0f}%)  {elapsed:.0f}s'
     )
 
-    if dest_size >= src_size:
+    if dest_size >= src_size * 0.95:
         tmp.unlink(missing_ok=True)
         log.warning(
             f'[W{slot_id}]   size guard: output {dest_size / 1e6:.0f}MB >= source {src_size / 1e6:.0f}MB'
             f' ({dest_size / src_size * 100:.0f}%) — keeping original'
         )
-        record_finish(db, job_id, 'skipped', dest_size, elapsed, 'size guard: output not smaller')
-        cache_set(db, str(path), st.st_size, st.st_mtime, 'hevc', out_info['duration'], cq=_cq)
+        record_finish(db, job_id, 'skipped', None, elapsed, 'size guard: output not smaller')
+        prior_cq = cached.get('cq', '') if cached else ''
+        cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
+        cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=cq_to_store)
         with _lock:
             state['workers'][slot_id] = None
         return 'skipped'
