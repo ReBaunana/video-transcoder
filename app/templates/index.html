@@ -134,6 +134,13 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
 
+    /* ─── Top bar wrapper (header + sys bar sticky together) ── */
+    #topBar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
     /* ─── Sys bar ───────────────────────────────────── */
     #sysBar {
       display: flex;
@@ -143,9 +150,6 @@
       background: rgba(8,8,16,.92);
       border-bottom: 1px solid var(--border);
       font-size: 11px;
-      position: sticky;
-      top: 0;
-      z-index: 99;
     }
     .sys-item { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
     .sys-lbl {
@@ -218,9 +222,6 @@
 
     /* ─── Header ─────────────────────────────────── */
     header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -1593,7 +1594,8 @@
 </head>
 <body>
 
-<!-- ═══ HEADER ══════════════════════════════════════════════ -->
+<!-- ═══ HEADER + SYS BAR (sticky wrapper) ═══════════════════ -->
+<div id="topBar">
 <header>
   <div class="header-left">
     <div class="logo">
@@ -1713,7 +1715,7 @@
   </div>
 </header>
 
-<!-- ═══ SYS BAR ═════════════════════════════════════════════ -->
+<!-- ═══ SYS BAR ══════════════════════════════════════════════ -->
 <div id="sysBar">
   <div class="sys-item">
     <span class="sys-lbl">CPU</span>
@@ -1741,6 +1743,7 @@
     <span class="sys-net-val" id="txVal">— MB/s</span>
   </div>
 </div>
+</div><!-- /#topBar -->
 
 <!-- ═══ MAIN ════════════════════════════════════════════════ -->
 <main>
