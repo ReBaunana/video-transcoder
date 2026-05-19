@@ -380,7 +380,7 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
         rc, err  = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_NVENC_SEM)
         elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
 
-        # HW decode failure -> retry with Intel VAAPI (if enabled) or CPU decode
+        # HW decode failure -> retry with Intel VAAPI (if enabled); no CPU fallback
         if rc not in (0, -1) and _decoder:
             tmp.unlink(missing_ok=True)
             with _lock:
@@ -394,9 +394,7 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
                 cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp)
                 rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM)
             else:
-                log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- retrying with CPU decode')
-                cmd = _make_cmd(path, out_ext, _cq, _preset, tmp)
-                rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_NVENC_SEM)
+                log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- no GPU fallback available, marking failed')
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
     if rc != 0 or not tmp.exists():

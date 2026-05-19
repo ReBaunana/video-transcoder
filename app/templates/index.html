@@ -972,6 +972,23 @@
     .tag-backend-nvenc { color: var(--green); border-color: rgba(52,211,153,.35); }
     .tag-backend-vaapi  { color: var(--cyan);  border-color: rgba(103,232,249,.35); }
 
+    .worker-group-hdr {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      font-size: .67rem;
+      font-weight: 600;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      padding: .2rem 0 .3rem;
+      border-bottom: 1px solid var(--border);
+      margin-top: .2rem;
+    }
+    .worker-group-nvenc { color: var(--green); border-color: rgba(52,211,153,.25); }
+    .worker-group-vaapi { color: var(--cyan);  border-color: rgba(103,232,249,.25); }
+    .worker-group-count { margin-left: auto; font-weight: 400; color: var(--text-muted); }
+
     .worker-idle-inner {
       display: flex;
       align-items: center;
@@ -1953,15 +1970,20 @@
   <!-- ── Workers (running only) ───────────────────────────── -->
   {% if state.running %}
   <div class="workers-grid">
-    {% for slot_id in range(workers_count) %}
+
+    {# ── NVIDIA NVENC group ── #}
+    <div class="worker-group-hdr worker-group-nvenc">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="2" width="20" height="20" rx="3"/></svg>
+      NVIDIA NVENC
+      <span class="worker-group-count">{{ nvenc_workers }}×</span>
+    </div>
+    {% for slot_id in range(nvenc_workers) %}
     {% set w = state.workers.get(slot_id) %}
     <div class="worker-card {{ 'active' if w else '' }}" id="worker-{{ slot_id }}">
       <div class="worker-header">
-        <span class="worker-label">Worker {{ slot_id + 1 }}</span>
-        {% if w %}
-        <span class="tag tag-backend-{{ w.backend or 'nvenc' }}" id="wbackend-{{ slot_id }}">{{ (w.backend or 'nvenc')|upper }}</span>
-        <span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>
-        {% endif %}
+        <span class="worker-label">NVIDIA {{ slot_id + 1 }}</span>
+        <span class="tag tag-backend-nvenc" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'nvenc')|upper }}{% else %}NVENC{% endif %}</span>
+        {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
       </div>
       {% if w %}
       <div class="worker-file">{{ w.file or '—' }}</div>
@@ -1981,6 +2003,42 @@
       {% endif %}
     </div>
     {% endfor %}
+
+    {# ── Intel VAAPI group ── #}
+    {% if vaapi_workers > 0 %}
+    <div class="worker-group-hdr worker-group-vaapi">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 22 22 2 22"/></svg>
+      Intel VAAPI
+      <span class="worker-group-count">{{ vaapi_workers }}×</span>
+    </div>
+    {% for slot_id in range(nvenc_workers, workers_count) %}
+    {% set w = state.workers.get(slot_id) %}
+    <div class="worker-card {{ 'active' if w else '' }}" id="worker-{{ slot_id }}">
+      <div class="worker-header">
+        <span class="worker-label">Intel {{ slot_id - nvenc_workers + 1 }}</span>
+        <span class="tag tag-backend-vaapi" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'vaapi')|upper }}{% else %}VAAPI{% endif %}</span>
+        {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
+      </div>
+      {% if w %}
+      <div class="worker-file">{{ w.file or '—' }}</div>
+      <div class="bar-track">
+        <div class="bar-glow"  id="wglow-{{ slot_id }}" style="width:{{ '%.1f'|format(w.progress) }}%"></div>
+        <div class="bar-fill"  id="wbar-{{ slot_id }}"  style="width:{{ '%.1f'|format(w.progress) }}%"></div>
+      </div>
+      <div class="progress-footer">
+        <span class="progress-pct" id="wpct-{{ slot_id }}">{{ '%.1f'|format(w.progress) }}%</span>
+        <span class="worker-fps" id="wfps-{{ slot_id }}">{% if w.fps %}{{ '%.0f'|format(w.fps) }} fps{% endif %}</span>
+      </div>
+      {% else %}
+      <div class="worker-idle-inner">
+        <span class="worker-idle-dot"></span>
+        <span class="worker-idle-txt">Idle &mdash; waiting for next file</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
   </div>
   {% endif %}
 
