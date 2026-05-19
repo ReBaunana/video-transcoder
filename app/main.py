@@ -180,6 +180,41 @@ def _read_gpu_pct() -> float:
     return -1.0
 
 
+_intel_prev: dict[str, tuple[int, float]] = {}  # engine -> (busy_ns, monotonic_ts)
+
+def _read_intel_engines() -> dict[str, float]:
+    """Per-engine Intel iGPU utilization % via i915 sysfs busy counters.
+
+    Returns {'render': x, 'video': y} where -1.0 means unavailable.
+    Reads world-readable sysfs files — no root or CAP_PERFMON needed.
+    """
+    import glob as _glob
+    mapping = {'rcs0': 'render', 'vcs0': 'video'}
+    out: dict[str, float] = {}
+    for engine, label in mapping.items():
+        paths = (
+            _glob.glob(f'/sys/class/drm/card*/device/tile0/gt0/engine/{engine}/busy')
+            + _glob.glob(f'/sys/class/drm/card*/device/engine/{engine}/busy')
+        )
+        if not paths:
+            out[label] = -1.0
+            continue
+        try:
+            busy_ns = int(open(paths[0]).read().strip())
+            now = time.monotonic()
+            prev = _intel_prev.get(engine)
+            _intel_prev[engine] = (busy_ns, now)
+            if prev is None:
+                out[label] = 0.0
+            else:
+                dt_ns = (now - prev[1]) * 1e9
+                pct = (busy_ns - prev[0]) / dt_ns * 100 if dt_ns > 0 else 0.0
+                out[label] = round(max(0.0, min(100.0, pct)), 1)
+        except Exception:
+            out[label] = -1.0
+    return out
+
+
 _net_log = logging.getLogger('net_mbps')
 # Suppress the "no physical interfaces" warning after the first emission so it
 # doesn't flood the log on every poll interval.
@@ -306,6 +341,7 @@ async def api_sysinfo():
         'cpu': _read_cpu_pct(),
         'mem': _read_mem_pct(),
         'gpu': _read_gpu_pct(),
+        'intel': _read_intel_engines(),
         'rx_mbps': rx,
         'tx_mbps': tx,
     })

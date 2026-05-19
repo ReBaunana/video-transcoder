@@ -176,6 +176,7 @@
     }
     .sys-fill.warn { background: var(--yellow); }
     .sys-fill.crit { background: var(--red); }
+    .sys-fill-cyan { background: var(--cyan) !important; }
     .sys-pct {
       color: var(--text);
       font-variant-numeric: tabular-nums;
@@ -1763,9 +1764,15 @@
   </div>
   <div class="sys-sep"></div>
   <div class="sys-item">
-    <span class="sys-lbl">GPU</span>
+    <span class="sys-lbl">NV</span>
     <div class="sys-track"><div class="sys-fill" id="gpuFill"></div></div>
     <span class="sys-pct" id="gpuPct">—</span>
+  </div>
+  <div class="sys-sep" id="intelSep" style="display:none"></div>
+  <div class="sys-item" id="intelItem" style="display:none">
+    <span class="sys-lbl">iGPU</span>
+    <div class="sys-track"><div class="sys-fill sys-fill-cyan" id="intelFill"></div></div>
+    <span class="sys-pct" id="intelPct">—</span>
   </div>
   <div class="sys-sep"></div>
   <div class="sys-item">
@@ -2875,6 +2882,18 @@
       _updateSysBar('cpuFill', 'cpuPct', d.cpu);
       _updateSysBar('memFill', 'memPct', d.mem);
       _updateSysBar('gpuFill', 'gpuPct', d.gpu);
+      const intelVideo = d.intel && d.intel.video !== undefined ? d.intel.video : -1;
+      const intelItem = document.getElementById('intelItem');
+      const intelSep  = document.getElementById('intelSep');
+      if (intelItem && intelSep) {
+        const show = intelVideo >= 0;
+        intelItem.style.display = show ? '' : 'none';
+        intelSep.style.display  = show ? '' : 'none';
+        if (show) {
+          document.getElementById('intelFill').style.width = intelVideo + '%';
+          document.getElementById('intelPct').textContent = Math.round(intelVideo) + '%';
+        }
+      }
       const rx = document.getElementById('rxVal');
       const tx = document.getElementById('txVal');
       if (rx) rx.textContent = _fmtMbps(d.rx_mbps);
