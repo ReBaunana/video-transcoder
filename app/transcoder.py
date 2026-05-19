@@ -154,6 +154,11 @@ _NVENC_SEM = threading.BoundedSemaphore(int(os.getenv('NVENC_MAX_SESSIONS', '3')
 _VAAPI_SEM    = threading.BoundedSemaphore(int(os.getenv('VAAPI_MAX_SESSIONS', '3')))
 _VAAPI_DEVICE = os.getenv('VAAPI_DEVICE', '/dev/dri/renderD128')
 
+# Codecs the iHD VAAPI driver (AlderLake GT1) can hardware-decode.
+# These get the full GPU pipeline: -hwaccel vaapi -hwaccel_output_format vaapi.
+# Codecs NOT in this set (mpeg4/xvid/divx, vc1, wmv3) fall back to CPU decode.
+_VAAPI_DECODE_OK = frozenset({'h264', 'hevc', 'mpeg2video', 'vp8', 'vp9', 'av1'})
+
 # Hardware decoders available on Ampere (RTX 30xx) and newer.
 # av1_cuvid requires Ampere+; mpeg4_cuvid can fail on malformed DivX/Xvid headers
 # but the Intel VAAPI or CPU-decode fallback in transcode_file handles that transparently.
@@ -187,14 +192,24 @@ def _admission_ok(info: dict) -> bool:
     return True
 
 
+def _vaapi_preexec():
+    """Lower scheduling priority for VAAPI workers to protect HA/Jellyfin on same host."""
+    os.nice(10)
+    try:
+        os.sched_setscheduler(0, os.SCHED_BATCH, os.sched_param(0))
+    except (AttributeError, OSError):
+        pass  # SCHED_BATCH not available on all kernels
+
+
 def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
-                sem=None) -> tuple[int, str]:
+                sem=None, preexec_fn=None) -> tuple[int, str]:
     """Return (returncode, stderr_tail).  rc=-1 means stopped by request."""
     if sem is None:
         sem = _NVENC_SEM
     stderr_tail: list[str] = []
     with sem:
-        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1)
+        proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1,
+                                preexec_fn=preexec_fn)
         try:
             for line in proc.stderr:
                 if _stop.is_set():
@@ -261,16 +276,29 @@ def _make_cmd(path: Path, out_ext: str, cq: str, preset: str, tmp: Path,
     return cmd
 
 
-def _make_vaapi_cmd(path: Path, out_ext: str, cq: str, tmp: Path) -> list[str]:
-    # CPU decode → upload to VAAPI surface → Intel GPU encode
-    # (-hwaccel vaapi -hwaccel_output_format vaapi omitted: no VAAPI decoders in this build)
-    # -threads 2: cap software-decode thread count to avoid pinning CPU cores
-    cmd = [
-        'ffmpeg', '-y',
-        '-threads', '2',
-        '-vaapi_device', _VAAPI_DEVICE,
-        '-i', str(path),
-        '-vf', 'format=nv12,hwupload',
+def _make_vaapi_cmd(path: Path, out_ext: str, cq: str, tmp: Path,
+                    codec: str | None = None) -> list[str]:
+    use_hw_decode = codec in _VAAPI_DECODE_OK
+    cmd = ['ffmpeg', '-y']
+    if use_hw_decode:
+        # Full GPU pipeline: iHD VAAPI decode → GPU surface → hevc_vaapi encode
+        cmd += [
+            '-hwaccel', 'vaapi',
+            '-hwaccel_device', _VAAPI_DEVICE,
+            '-hwaccel_output_format', 'vaapi',
+            '-threads', '1', '-filter_threads', '1',
+            '-i', str(path),
+            '-vf', 'scale_vaapi=format=nv12',
+        ]
+    else:
+        # CPU decode (mpeg4/xvid/divx/vc1 — no VAAPI decoder) → upload to GPU
+        cmd += [
+            '-threads', '2', '-filter_threads', '1',
+            '-vaapi_device', _VAAPI_DEVICE,
+            '-i', str(path),
+            '-vf', 'format=nv12,hwupload',
+        ]
+    cmd += [
         '-c:v', 'hevc_vaapi', '-global_quality', cq,
         '-c:a', 'copy', '-c:s', 'copy',
         '-metadata', f'nvtranscode_cq={cq}',
@@ -337,9 +365,10 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
                 cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq='original')
                 return 'skipped'
 
-    # VAAPI: skip files above 720p — CPU software-decode of 1080p/4K costs too many cores
-    if backend == 'vaapi' and info.get('height', 0) > 720:
-        log.info(f'[W{slot_id}] VAAPI skip {path.name} [{info.get("height", 0)}p > 720p, defer to NVENC]')
+    # VAAPI: for codecs without hardware decode (mpeg4/xvid/divx), cap at 720p to avoid
+    # CPU software-decode overload. h264/hevc/vp9/av1 use full GPU pipeline — no cap.
+    if backend == 'vaapi' and codec not in _VAAPI_DECODE_OK and info.get('height', 0) > 720:
+        log.info(f'[W{slot_id}] VAAPI skip {path.name} [SW-decode {codec} {info.get("height", 0)}p > 720p, defer to NVENC]')
         return 'skipped'
 
     # Layer 1: skip files unlikely to shrink based on bitrate vs resolution
@@ -379,8 +408,9 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
         }
 
     if backend == 'vaapi':
-        cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp)
-        rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM)
+        cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp, codec=codec)
+        rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM,
+                              preexec_fn=_vaapi_preexec)
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     else:
         _decoder = _CUVID_MAP.get(codec)
@@ -399,8 +429,9 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
                 with _lock:
                     if state['workers'].get(slot_id):
                         state['workers'][slot_id]['backend'] = 'vaapi'
-                cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp)
-                rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM)
+                cmd = _make_vaapi_cmd(path, out_ext, _cq, tmp, codec=codec)
+                rc, err = _run_ffmpeg(cmd, info['duration'], slot_id, sem=_VAAPI_SEM,
+                                      preexec_fn=_vaapi_preexec)
             else:
                 log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- no GPU fallback available, marking failed')
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
