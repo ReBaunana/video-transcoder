@@ -32,19 +32,56 @@ Each file's `nvtranscode_cq` metadata tag encodes its history:
 |---|---|
 | absent | Original HEVC — never re-encode |
 | `original` | Confirmed original in DB cache — skip unless Re-encode Originals ON |
-| `guard:26` | Output was not smaller than source at CQ 26 — skip at same CQ |
+| `guard:26` | NVENC tried at CQ 26, output not 5% smaller — everyone skips |
+| `guard_intel:26` | Intel VAAPI tried at CQ 26 and failed size guard — Intel skips; NVENC retries next scan |
 | `26` (numeric) | We encoded this at CQ 26 — re-encode if current CQ differs |
 
 Tag survives DB reset because it's embedded in the file (ffprobe reads it back).
 
-## Size guard
-Output >= 95% of source size → keep original, mark `guard:{CQ}` in cache. Prevents bloating already-efficient files.
+## Size guard (Layer 2)
+Output >= 95% of source size → keep original. NVENC stores `guard:{CQ}`, VAAPI stores `guard_intel:{CQ}`.
 
-## NVENC concurrency
-`_NVENC_SEM = BoundedSemaphore(3)` — RTX 3050 Ti max 3 concurrent NVENC sessions. Override with env `NVENC_MAX_SESSIONS`. Default workers = 2 (safe margin).
+## Layer 1 admission control
+Before encoding, bitrate vs resolution check skips files unlikely to shrink:
+- 4K (>=2160p): skip if < 8000 kbps
+- 1080p: skip if < 3000 kbps
+- 720p: skip if < 1500 kbps
+- SD: skip if < 800 kbps
+Unknown bitrate passes through (let size guard decide).
+
+## GPU backends
+
+### NVENC (primary)
+`_NVENC_SEM = BoundedSemaphore(3)` — RTX 3050 Ti max 3 concurrent sessions. Override: `NVENC_MAX_SESSIONS`.
+Workers 0..WORKERS-1 are NVENC type.
+
+### Intel VAAPI (secondary)
+`_VAAPI_SEM = BoundedSemaphore(3)` — Intel iGPU (AlderLake-S GT1), `hevc_vaapi` encoder.
+Workers WORKERS..WORKERS+VAAPI_WORKERS-1 are VAAPI type.
+Set `VAAPI_WORKERS=2` (env) or via UI to enable. Default 0 = disabled.
+Requires hpc02 docker-compose: `devices: [/dev/dri:/dev/dri]` + `group_add: ["993"]` (render GID).
+Files Intel fails size guard → `guard_intel:{CQ}` → NVENC retries next scan.
 
 ## HW decode fallback
-First attempt uses CUVID decoder (e.g. `h264_cuvid`). On failure → retry once with CPU decode. Handles malformed DivX/Xvid headers.
+NVENC: first attempt uses CUVID decoder (e.g. `h264_cuvid`). On failure:
+- If VAAPI enabled (VAAPI_WORKERS > 0) → retry with Intel VAAPI (full HW path)
+- If VAAPI disabled → retry with CPU decode
+Handles malformed DivX/Xvid headers.
+
+## hpc02 docker-compose.yml (NOT in git)
+File at `/opt/docker/video-transcoder/docker-compose.yml` — managed manually.
+Extras vs repo template:
+```yaml
+devices:
+  - /dev/dri:/dev/dri
+group_add:
+  - "993"     # render group GID — required for Intel VAAPI /dev/dri/renderD128 access
+volumes:
+  - /proc/1/net:/host/proc/net:ro
+environment:
+  - PROC_NET_DEV=/host/proc/net/dev
+  - NET_IFACE=eno1
+```
 
 ## Corrupt detection
 Duration drift > 2% between source and output → output deleted, source marked `corrupt` in cache → permanent skip.
