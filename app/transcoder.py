@@ -207,7 +207,14 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
     if sem is None:
         sem = _NVENC_SEM
     stderr_tail: list[str] = []
-    with sem:
+    # Wait for semaphore with _stop awareness
+    acquired = False
+    while not acquired:
+        acquired = sem.acquire(blocking=False)
+        if not acquired:
+            if _stop.wait(timeout=0.5):
+                return -1, 'stopped'
+    try:
         proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1,
                                 preexec_fn=preexec_fn)
         try:
@@ -234,7 +241,9 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
             if proc.poll() is None:
                 proc.terminate()
             proc.wait()
-    return proc.returncode, '\n'.join(stderr_tail)
+        return proc.returncode, '\n'.join(stderr_tail)
+    finally:
+        sem.release()
 
 
 def get_mounts() -> list[str]:
