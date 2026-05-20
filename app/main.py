@@ -180,43 +180,62 @@ def _read_gpu_pct() -> float:
     return -1.0
 
 
-# Intel iGPU stats — updated by background thread via intel_gpu_top CSV output.
-# CSV header: ...,RCS %,...,VCS %,... (indices 6 and 12)
-# -1.0 = unavailable (intel_gpu_top not present or CAP_PERFMON missing)
+# Intel iGPU stats — computed from /proc/<pid>/fdinfo DRM engine counters.
+# i915 fdinfo exports cumulative nanoseconds per engine for each DRM client.
+# We aggregate across all ffmpeg processes (same uid = readable without privileges)
+# and compute a delta-over-time utilisation percentage every 2 seconds.
+# 0.0 = idle (no ffmpeg active), -1.0 = never sampled yet (bar hidden in UI)
 _intel_stats: dict[str, float] = {'video': -1.0, 'render': -1.0}
 _intel_stats_lock = threading.Lock()
 
+import glob as _glob
+import re as _re
+
+_DRM_ENGINE_RE = _re.compile(r'^drm-engine-(\w[\w-]*):\s+(\d+)\s+ns', _re.MULTILINE)
+
+
+def _read_drm_fdinfo() -> dict[str, int]:
+    """Aggregate cumulative DRM engine ns across all ffmpeg /proc/<pid>/fd/* entries."""
+    totals: dict[str, int] = {}
+    for comm_path in _glob.glob('/proc/*/comm'):
+        try:
+            pid = comm_path.split('/')[2]
+            with open(comm_path) as f:
+                if 'ffmpeg' not in f.read():
+                    continue
+            for fd_link in _glob.glob(f'/proc/{pid}/fd/*'):
+                try:
+                    target = os.readlink(fd_link)
+                    if not target.startswith('/dev/dri/'):
+                        continue
+                    fd_num = os.path.basename(fd_link)
+                    with open(f'/proc/{pid}/fdinfo/{fd_num}') as f:
+                        for m in _DRM_ENGINE_RE.finditer(f.read()):
+                            name = m.group(1)
+                            totals[name] = totals.get(name, 0) + int(m.group(2))
+                except OSError:
+                    pass
+        except (OSError, ValueError, IndexError):
+            pass
+    return totals
+
 
 def _intel_gpu_monitor():
-    """Background thread: runs intel_gpu_top and keeps _intel_stats up to date."""
+    time.sleep(3)
+    prev = _read_drm_fdinfo()
+    prev_t = time.monotonic()
     while True:
-        try:
-            proc = subprocess.Popen(
-                ['intel_gpu_top', '-s', '1000'],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-            )
-            header_skipped = False
-            for line in proc.stdout:
-                line = line.strip()
-                if not line:
-                    continue
-                if not header_skipped:
-                    header_skipped = True
-                    continue
-                parts = line.split(',')
-                if len(parts) >= 15:
-                    try:
-                        with _intel_stats_lock:
-                            _intel_stats['render'] = round(float(parts[6]), 1)
-                            _intel_stats['video']  = round(float(parts[12]), 1)
-                    except (ValueError, IndexError):
-                        pass
-            proc.wait()
-        except FileNotFoundError:
-            break  # intel_gpu_top not installed — stop retrying
-        except Exception:
-            pass
-        time.sleep(5)
+        time.sleep(2)
+        now = time.monotonic()
+        elapsed_ns = (now - prev_t) * 1e9
+        curr = _read_drm_fdinfo()
+        if elapsed_ns > 0:
+            with _intel_stats_lock:
+                for key, engine in (('video', 'video'), ('render', 'render')):
+                    delta = max(0, curr.get(engine, 0) - prev.get(engine, 0))
+                    _intel_stats[key] = min(100.0, round(delta / elapsed_ns * 100, 1))
+        prev = curr
+        prev_t = now
 
 
 threading.Thread(target=_intel_gpu_monitor, daemon=True, name='intel-gpu-mon').start()
