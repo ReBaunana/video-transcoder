@@ -2033,10 +2033,10 @@
         <span class="worker-label">NVIDIA {{ slot_id + 1 }}</span>
         <span class="tag tag-backend-nvenc" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'nvenc')|upper }}{% else %}NVENC{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
-        {% if w %}<button class="worker-kill-btn" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }}, '{{ w.file|e }}')">&#128465;</button>{% endif %}
+        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}">&#128465;</button>
       </div>
+      <div class="worker-file" id="wfile-{{ slot_id }}">{{ w.file if w else '—' }}</div>
       {% if w %}
-      <div class="worker-file">{{ w.file or '—' }}</div>
       <div class="bar-track">
         <div class="bar-glow"  id="wglow-{{ slot_id }}" style="width:{{ '%.1f'|format(w.progress) }}%"></div>
         <div class="bar-fill"  id="wbar-{{ slot_id }}"  style="width:{{ '%.1f'|format(w.progress) }}%"></div>
@@ -2068,10 +2068,10 @@
         <span class="worker-label">Intel {{ slot_id - nvenc_workers + 1 }}</span>
         <span class="tag tag-backend-vaapi" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'vaapi')|upper }}{% else %}VAAPI{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
-        {% if w %}<button class="worker-kill-btn" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }}, '{{ w.file|e }}')">&#128465;</button>{% endif %}
+        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}">&#128465;</button>
       </div>
+      <div class="worker-file" id="wfile-{{ slot_id }}">{{ w.file if w else '—' }}</div>
       {% if w %}
-      <div class="worker-file">{{ w.file or '—' }}</div>
       <div class="bar-track">
         <div class="bar-glow"  id="wglow-{{ slot_id }}" style="width:{{ '%.1f'|format(w.progress) }}%"></div>
         <div class="bar-fill"  id="wbar-{{ slot_id }}"  style="width:{{ '%.1f'|format(w.progress) }}%"></div>
@@ -3006,6 +3006,12 @@
           const glow = document.getElementById('wglow-' + i);
           const pct  = document.getElementById('wpct-'  + i);
           const fps  = document.getElementById('wfps-'  + i);
+          const fileEl = document.getElementById('wfile-' + i);
+          const killBtn = document.getElementById('wkill-' + i);
+          const card = document.getElementById('worker-' + i);
+          if (fileEl) fileEl.textContent = w ? (w.file || '—') : '—';
+          if (killBtn) killBtn.style.display = w ? '' : 'none';
+          if (card) { if (w) card.classList.add('active'); else card.classList.remove('active'); }
           if (w && bar) {
             const p = (w.progress || 0).toFixed(1);
             bar.style.width  = p + '%';
@@ -3255,9 +3261,10 @@
 </div>
 <script>
   var _killSlot = null;
-  function openKillModal(slot, filename) {
+  function openKillModal(slot) {
     _killSlot = slot;
-    document.getElementById('killModalFile').textContent = filename;
+    var fileEl = document.getElementById('wfile-' + slot);
+    document.getElementById('killModalFile').textContent = fileEl ? fileEl.textContent : '';
     document.getElementById('killModalOverlay').classList.add('open');
   }
   function closeKillModal() {
