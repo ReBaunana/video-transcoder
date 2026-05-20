@@ -211,6 +211,7 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
     if sem is None:
         sem = _NVENC_SEM
     stderr_tail: list[str] = []
+    last_raw_line: str = ''
     # Wait for semaphore with _stop awareness
     acquired = False
     while not acquired:
@@ -240,6 +241,8 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
                         if fm:
                             w['fps'] = float(fm.group(1))
                 stripped = line.strip()
+                if stripped:
+                    last_raw_line = stripped
                 if stripped and not _noise_re.search(stripped):
                     stderr_tail.append(stripped)
                     if len(stderr_tail) > 8:
@@ -251,7 +254,10 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
         if slot_id in _killed_slots:
             _killed_slots.discard(slot_id)
             return -1, ''
-        return proc.returncode, '\n'.join(stderr_tail)
+        tail = '\n'.join(stderr_tail)
+        if last_raw_line and last_raw_line not in tail:
+            tail = (tail + '\n' + last_raw_line).strip()
+        return proc.returncode, tail
     finally:
         with _worker_procs_lock:
             _worker_procs.pop(slot_id, None)
@@ -441,13 +447,16 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
         elapsed  = (datetime.now(timezone.utc) - started).total_seconds()
 
         # HW decode failure -> retry with Intel VAAPI (if enabled); no CPU fallback
-        if rc not in (0, -1) and _decoder:
+        # Also retry on early hwaccel-level crash (< 3s, no frames) even without CUVID decoder
+        _early_crash = elapsed < 3.0
+        if rc not in (0, -1) and (_decoder or _early_crash):
             tmp.unlink(missing_ok=True)
             with _lock:
                 if state['workers'].get(slot_id):
                     state['workers'][slot_id]['progress'] = 0.0
             if VAAPI_WORKERS > 0:
-                log.warning(f'[W{slot_id}]   HW decode failed ({_decoder}) -- retrying with Intel VAAPI')
+                reason = f'HW decode failed ({_decoder})' if _decoder else f'early crash rc={rc} ({elapsed:.1f}s)'
+                log.warning(f'[W{slot_id}]   {reason} -- retrying with Intel VAAPI')
                 with _lock:
                     if state['workers'].get(slot_id):
                         state['workers'][slot_id]['backend'] = 'vaapi'
