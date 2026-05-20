@@ -50,6 +50,10 @@ _stop      = threading.Event()
 _soft_stop = threading.Event()
 _lock      = threading.Lock()
 
+_worker_procs: dict[int, subprocess.Popen] = {}
+_worker_procs_lock = threading.Lock()
+_killed_slots: set[int] = set()
+
 
 # ── Settings persistence ──────────────────────────────────────────────────────
 
@@ -217,11 +221,14 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
     try:
         proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, bufsize=1,
                                 preexec_fn=preexec_fn)
+        with _worker_procs_lock:
+            _worker_procs[slot_id] = proc
         try:
             for line in proc.stderr:
-                if _stop.is_set():
+                if _stop.is_set() or slot_id in _killed_slots:
                     proc.terminate()
                     proc.wait()
+                    _killed_slots.discard(slot_id)
                     return -1, ''
                 with _lock:
                     w = state['workers'].get(slot_id)
@@ -241,8 +248,13 @@ def _run_ffmpeg(cmd: list, duration: float, slot_id: int,
             if proc.poll() is None:
                 proc.terminate()
             proc.wait()
+        if slot_id in _killed_slots:
+            _killed_slots.discard(slot_id)
+            return -1, ''
         return proc.returncode, '\n'.join(stderr_tail)
     finally:
+        with _worker_procs_lock:
+            _worker_procs.pop(slot_id, None)
         sem.release()
 
 
@@ -409,6 +421,7 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
     with _lock:
         state['workers'][slot_id] = {
             'file':       path.name,
+            'src_path':   str(path),
             'codec':      codec,
             'progress':   0.0,
             'fps':        0.0,
@@ -639,3 +652,18 @@ def stop_scan_soft():
     _soft_stop.set()
     with _lock:
         state['stopping'] = True
+
+
+def kill_worker(slot_id: int) -> bool:
+    """Terminate a specific worker's ffmpeg process. Returns False if not active."""
+    _killed_slots.add(slot_id)
+    with _worker_procs_lock:
+        proc = _worker_procs.get(slot_id)
+    if proc is None:
+        _killed_slots.discard(slot_id)
+        return False
+    try:
+        proc.terminate()
+    except OSError:
+        pass
+    return True

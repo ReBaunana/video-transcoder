@@ -174,6 +174,12 @@ def delete_corrupt_cache_entries(conn, paths: list):
         conn.commit()
 
 
+def delete_cache_entry(conn, path: str):
+    with _lock:
+        conn.execute("DELETE FROM file_cache WHERE path=?", (path,))
+        conn.commit()
+
+
 def reset_db(conn: sqlite3.Connection):
     with _lock:
         conn.rollback()

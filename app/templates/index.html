@@ -973,6 +973,48 @@
     .tag-backend-nvenc { color: var(--green); border-color: rgba(52,211,153,.35); }
     .tag-backend-vaapi  { color: var(--cyan);  border-color: rgba(103,232,249,.35); }
 
+    .worker-kill-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: .18rem .32rem;
+      line-height: 1;
+      transition: color .15s, border-color .15s, background .15s;
+      flex-shrink: 0;
+    }
+    .worker-kill-btn:hover { color: #f87171; border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.08); }
+
+    .kill-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .kill-modal-overlay.open { display: flex; }
+    .kill-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.6rem 1.8rem;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 8px 40px rgba(0,0,0,.4);
+    }
+    .kill-modal h3 { margin: 0 0 .5rem; font-size: 1rem; color: var(--text); }
+    .kill-modal p  { margin: 0 0 1.2rem; font-size: .85rem; color: var(--text-muted); word-break: break-all; }
+    .kill-modal-btns { display: flex; gap: .7rem; justify-content: flex-end; }
+    .kill-modal-btns button { padding: .45rem 1rem; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-size: .85rem; }
+    .kill-btn-cancel  { background: var(--surface); color: var(--text); }
+    .kill-btn-cancel:hover { border-color: var(--accent); }
+    .kill-btn-confirm { background: rgba(248,113,113,.15); color: #f87171; border-color: rgba(248,113,113,.4); }
+    .kill-btn-confirm:hover { background: rgba(248,113,113,.25); }
+
     .worker-group-hdr {
       grid-column: 1 / -1;
       display: flex;
@@ -1991,6 +2033,7 @@
         <span class="worker-label">NVIDIA {{ slot_id + 1 }}</span>
         <span class="tag tag-backend-nvenc" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'nvenc')|upper }}{% else %}NVENC{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
+        {% if w %}<button class="worker-kill-btn" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }}, '{{ w.file|e }}')">&#128465;</button>{% endif %}
       </div>
       {% if w %}
       <div class="worker-file">{{ w.file or '—' }}</div>
@@ -2025,6 +2068,7 @@
         <span class="worker-label">Intel {{ slot_id - nvenc_workers + 1 }}</span>
         <span class="tag tag-backend-vaapi" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'vaapi')|upper }}{% else %}VAAPI{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
+        {% if w %}<button class="worker-kill-btn" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }}, '{{ w.file|e }}')">&#128465;</button>{% endif %}
       </div>
       {% if w %}
       <div class="worker-file">{{ w.file or '—' }}</div>
@@ -3196,6 +3240,54 @@
     });
   })();
   {% endif %}
+</script>
+
+<!-- Kill worker modal -->
+<div class="kill-modal-overlay" id="killModalOverlay">
+  <div class="kill-modal">
+    <h3>Stop &amp; Delete</h3>
+    <p id="killModalFile"></p>
+    <div class="kill-modal-btns">
+      <button class="kill-btn-cancel" onclick="closeKillModal()">Cancel</button>
+      <button class="kill-btn-confirm" id="killModalConfirm">Stop &amp; Delete file</button>
+    </div>
+  </div>
+</div>
+<script>
+  var _killSlot = null;
+  function openKillModal(slot, filename) {
+    _killSlot = slot;
+    document.getElementById('killModalFile').textContent = filename;
+    document.getElementById('killModalOverlay').classList.add('open');
+  }
+  function closeKillModal() {
+    document.getElementById('killModalOverlay').classList.remove('open');
+    _killSlot = null;
+  }
+  document.getElementById('killModalOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeKillModal();
+  });
+  document.getElementById('killModalConfirm').addEventListener('click', function() {
+    if (_killSlot === null) return;
+    var slot = _killSlot;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Stopping…';
+    fetch('/api/worker/' + slot + '/kill', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({delete: true})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      closeKillModal();
+      if (d.ok) {
+        var card = document.getElementById('worker-' + slot);
+        if (card) card.style.opacity = '.4';
+      }
+    }).catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Stop & Delete file';
+    });
+  });
 </script>
 </body>
 </html>

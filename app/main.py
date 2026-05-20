@@ -14,7 +14,7 @@ from app.database import (
     init as db_init, backup as db_backup, reset_db, clean_jobs, clean_failed_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
     get_corrupt_files, delete_corrupt_cache_entries, get_cache_mount_stats,
-    prune_stale_cache,
+    prune_stale_cache, delete_cache_entry,
 )
 from app import transcoder
 
@@ -400,6 +400,32 @@ async def api_soft_stop():
         return JSONResponse({'ok': False, 'msg': 'Already finishing up'})
     transcoder.stop_scan_soft()
     return JSONResponse({'ok': True, 'msg': 'Finishing current files, then stopping'})
+
+
+@app.post('/api/worker/{slot_id}/kill')
+async def api_kill_worker(slot_id: int, request: Request):
+    body = await request.json()
+    delete = bool(body.get('delete', False))
+
+    with transcoder._lock:
+        w = transcoder.state['workers'].get(slot_id)
+    if not w:
+        return JSONResponse({'ok': False, 'msg': 'Worker not active'}, status_code=404)
+
+    src_path = w.get('src_path', '')
+    killed = transcoder.kill_worker(slot_id)
+
+    deleted = False
+    if delete and src_path:
+        p = Path(src_path)
+        try:
+            p.unlink(missing_ok=True)
+            deleted = True
+            delete_cache_entry(db, src_path)
+        except OSError as e:
+            return JSONResponse({'ok': False, 'msg': f'Kill sent but delete failed: {e}'})
+
+    return JSONResponse({'ok': True, 'killed': killed, 'deleted': deleted, 'file': src_path})
 
 
 @app.post('/api/workers')
