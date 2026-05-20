@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     APP_VERSION=${APP_VERSION}
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg tzdata \
     libva-drm2 libva2 intel-media-va-driver \
     intel-gpu-tools \

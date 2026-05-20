@@ -1,4 +1,6 @@
 fastapi~=0.136
 uvicorn[standard]~=0.47
-jinja2~=3.1
+starlette>=0.49.1,<0.51.0
+python-multipart>=0.0.26
+jinja2>=3.1.6,<3.2
 aiofiles~=25.1
