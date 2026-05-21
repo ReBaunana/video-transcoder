@@ -477,6 +477,16 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
         err_short = err.splitlines()[-1] if err else f'ffmpeg exit {rc}'
         log.error(f'[W{slot_id}]   ffmpeg failed (rc={rc}): {err_short}')
         record_finish(db, job_id, 'failed', None, elapsed, err_short[:200])
+        # Cache a guard so this file is not retried endlessly by the same backend.
+        # VAAPI failure → guard_intel so NVENC gets a shot next scan.
+        # NVENC failure (with or without prior VAAPI fallback) → permanent guard.
+        if backend == 'vaapi':
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'],
+                      cq=f'guard_intel:{_cq}')
+            log.info(f'[W{slot_id}]   guard_intel:{_cq} set — NVENC will retry next scan')
+        else:
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'],
+                      cq=f'guard:{_cq}')
         with _lock:
             state['workers'][slot_id] = None
         return 'failed'
