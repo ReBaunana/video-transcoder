@@ -664,7 +664,12 @@ def stop_scan_soft():
 
 
 def kill_worker(slot_id: int) -> bool:
-    """Terminate a specific worker's ffmpeg process. Returns False if not active."""
+    """Terminate a specific worker's ffmpeg process. Returns False if not active.
+
+    Sends SIGTERM first, then escalates to SIGKILL after 2s if the process
+    hasn't exited — necessary for vc1_cuvid/WMV encodes that ignore SIGTERM.
+    SIGKILL closes the stderr pipe which unblocks _run_ffmpeg's read loop.
+    """
     _killed_slots.add(slot_id)
     with _worker_procs_lock:
         proc = _worker_procs.get(slot_id)
@@ -675,4 +680,15 @@ def kill_worker(slot_id: int) -> bool:
         proc.terminate()
     except OSError:
         pass
+
+    def _escalate():
+        import time as _t
+        _t.sleep(2)
+        try:
+            if proc.poll() is None:
+                proc.kill()
+        except OSError:
+            pass
+
+    threading.Thread(target=_escalate, daemon=True, name=f'kill-esc-{slot_id}').start()
     return True

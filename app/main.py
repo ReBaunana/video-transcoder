@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import subprocess
@@ -413,15 +414,20 @@ async def api_kill_worker(slot_id: int, request: Request):
         return JSONResponse({'ok': False, 'msg': 'Worker not active'}, status_code=404)
 
     src_path = w.get('src_path', '')
+
+    # Signal the process immediately — does not block
     killed = transcoder.kill_worker(slot_id)
 
+    # Run NFS unlink in a thread pool so parallel kill requests don't
+    # serialize on each other while waiting for the filesystem
     deleted = False
     if delete and src_path:
-        p = Path(src_path)
-        try:
-            p.unlink(missing_ok=True)
-            deleted = True
+        def _delete():
+            Path(src_path).unlink(missing_ok=True)
             delete_cache_entry(db, src_path)
+        try:
+            await asyncio.to_thread(_delete)
+            deleted = True
         except OSError as e:
             return JSONResponse({'ok': False, 'msg': f'Kill sent but delete failed: {e}'})
 
