@@ -496,6 +496,12 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
         log.error(f'[W{slot_id}]   verify failed: codec={out_info and out_info["codec"]}')
         tmp.unlink(missing_ok=True)
         record_finish(db, job_id, 'failed', None, elapsed, 'codec verification failed')
+        if backend == 'vaapi':
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'],
+                      cq=f'guard_intel:{_cq}')
+        else:
+            cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'],
+                      cq=f'guard:{_cq}')
         with _lock:
             state['workers'][slot_id] = None
         return 'failed'
