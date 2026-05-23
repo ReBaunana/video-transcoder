@@ -152,7 +152,11 @@ def get_cache_mount_stats(conn) -> dict:
         SELECT
             substr(path, 8, instr(substr(path, 8), '/') - 1) AS mount,
             COUNT(*) AS total,
-            SUM(CASE WHEN codec IN ('hevc', 'av1') THEN 1 ELSE 0 END) AS done,
+            SUM(CASE WHEN
+                codec IN ('hevc', 'av1')
+                OR cq LIKE 'guard:%'
+                OR (codec NOT IN ('hevc', 'av1', 'corrupt') AND cq = '')
+            THEN 1 ELSE 0 END) AS done,
             SUM(CASE WHEN codec = 'corrupt' THEN 1 ELSE 0 END) AS corrupt
         FROM file_cache
         WHERE path LIKE '/media/%' AND instr(substr(path, 8), '/') > 0
