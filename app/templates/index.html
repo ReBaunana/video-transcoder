@@ -2339,6 +2339,7 @@
       <div class="modal-footer" style="padding-top:.6rem">
         <span class="corrupt-sel-count" id="corruptSelCount"></span>
         <button class="btn btn-ghost" onclick="corruptSelectAll()">Select All</button>
+        <button class="btn btn-ghost" onclick="corruptResetAll()">Reset All</button>
         <button class="btn btn-ghost" onclick="closeCorruptModal()">Close</button>
         <button class="btn btn-danger" id="corruptDeleteBtn" onclick="corruptDeleteSelected()" disabled>Delete Selected</button>
       </div>
@@ -2562,6 +2563,30 @@
       showToast('Delete failed: ' + e.message, 'error');
     }
   }
+  async function corruptResetAll() {
+    const count = _corruptFiles.length;
+    if (!count) return;
+    const ok = await openConfirm(
+      'Reset Corrupt Markers',
+      `Remove the corrupt marker from all <strong style="color:var(--text)">${count} file${count>1?'s':''}</strong>?<br><br><span style="font-size:.77rem;color:var(--text-muted)">Files stay on disk. Scanner will re-probe them on next scan.</span>`,
+      'Reset'
+    );
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/corrupt-files/reset-all', {method: 'POST'});
+      const d = await r.json();
+      if (!d.ok) { showToast(d.error || 'Reset failed', 'error'); return; }
+      showToast('Reset ' + d.deleted + ' corrupt marker' + (d.deleted>1?'s':''), 'success');
+      _corruptRender([]);
+      const badge = document.getElementById('corruptBadge');
+      const item  = document.getElementById('corruptMenuItem');
+      if (badge) badge.textContent = 0;
+      if (item)  item.style.display = 'none';
+    } catch(e) {
+      showToast('Reset failed: ' + e.message, 'error');
+    }
+  }
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeBackupModal(); closeHelpModal(); closeScanModal(); closeCorruptModal(); _confirmResolve(false);

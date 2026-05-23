@@ -15,7 +15,7 @@ from app.database import (
     init as db_init, backup as db_backup, reset_db, clean_jobs, clean_failed_jobs, BACKUP_DIR,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
     get_corrupt_files, delete_corrupt_cache_entries, get_cache_mount_stats,
-    prune_stale_cache, delete_cache_entry,
+    prune_stale_cache, delete_cache_entry, reset_corrupt_cache,
 )
 from app import transcoder
 
@@ -581,6 +581,12 @@ async def api_delete_corrupt_files(request: Request):
     if deleted:
         delete_corrupt_cache_entries(db, deleted)
     return JSONResponse({'ok': True, 'deleted': len(deleted), 'errors': errors})
+
+
+@app.post('/api/corrupt-files/reset-all')
+async def api_reset_corrupt_files():
+    deleted = reset_corrupt_cache(db)
+    return JSONResponse({'ok': True, 'deleted': deleted})
 
 
 @app.post('/api/backup')

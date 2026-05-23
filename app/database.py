@@ -184,6 +184,13 @@ def delete_cache_entry(conn, path: str):
         conn.commit()
 
 
+def reset_corrupt_cache(conn) -> int:
+    with _lock:
+        cur = conn.execute("DELETE FROM file_cache WHERE codec='corrupt'")
+        conn.commit()
+    return cur.rowcount
+
+
 def reset_db(conn: sqlite3.Connection):
     with _lock:
         conn.rollback()
