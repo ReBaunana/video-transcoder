@@ -33,6 +33,7 @@ _ver_file   = Path(__file__).parent.parent / 'VERSION'
 APP_VERSION = os.getenv('APP_VERSION') or (_ver_file.read_text().strip() if _ver_file.exists() else 'dev')
 
 last_backup_at: str | None = None
+last_prune_at:  str | None = None
 
 
 @app.on_event('startup')
@@ -57,7 +58,7 @@ async def startup():
 
 def _start_scheduler():
     def _loop():
-        global last_backup_at
+        global last_backup_at, last_prune_at
         import time as _time
         log = logging.getLogger('scheduler')
 
@@ -68,6 +69,8 @@ def _start_scheduler():
             backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
             if backups:
                 last_backup_ts = backups[-1].stat().st_mtime
+
+        last_prune_ts = 0.0
 
         while True:
             now    = datetime.now()
@@ -82,6 +85,18 @@ def _start_scheduler():
                     log.info(f'Scheduled backup → {path.name}')
                 except Exception as e:
                     log.error(f'Backup failed: {e}')
+
+            prune_interval_h = transcoder.PRUNE_INTERVAL_H
+            if prune_interval_h > 0 and (now_ts - last_prune_ts) >= prune_interval_h * 3600:
+                if not transcoder.state['running']:
+                    try:
+                        pruned = prune_stale_cache(db)
+                        last_prune_ts = now_ts
+                        last_prune_at = now.strftime('%Y-%m-%d %H:%M')
+                        transcoder.state['last_prune_at'] = last_prune_at
+                        log.info(f'Scheduled prune: {pruned} stale cache entries removed')
+                    except Exception as e:
+                        log.error(f'Prune failed: {e}')
 
             if transcoder.SCHEDULE_HOUR >= 0 and now.hour == transcoder.SCHEDULE_HOUR and now.minute == 0:
                 if not transcoder.state['running']:

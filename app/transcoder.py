@@ -23,6 +23,7 @@ WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))    # NVENC wo
 VAAPI_WORKERS      = int(os.getenv('VAAPI_WORKERS', '0'))             # Intel VAAPI workers
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
+PRUNE_INTERVAL_H   = max(1, int(os.getenv('PRUNE_INTERVAL_H', '24')))
 SCHEDULE_HOUR      = int(os.getenv('SCHEDULE_HOUR', '3'))       # -1 = disabled
 
 VIDEO_EXTENSIONS = frozenset({
@@ -45,6 +46,7 @@ state: dict = {
     'current_mount': None,
     'mount_totals':  {},   # {mount_name: total_video_file_count}
     'session':       {'done': 0, 'failed': 0, 'skipped': 0},
+    'last_prune_at': None,
 }
 _stop      = threading.Event()
 _soft_stop = threading.Event()
@@ -614,6 +616,14 @@ def run_scan(db):
         if not MEDIA_ROOT.exists():
             log.error(f'{MEDIA_ROOT} not found -- check volume mounts')
             return
+
+        from app.database import prune_stale_cache
+        try:
+            pruned = prune_stale_cache(db)
+            state['last_prune_at'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+            log.info(f'Pre-scan prune: {pruned} stale cache entries removed')
+        except Exception as e:
+            log.warning(f'Pre-scan prune failed: {e}')
 
         mounts = sorted(p for p in MEDIA_ROOT.iterdir() if p.is_dir())
         log.info(f'Mounts: {[m.name for m in mounts]}')
