@@ -245,6 +245,23 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
     enqueued = 0
     for fid in ids:
         try:
+            # The table has UNIQUE(file_curation_id) so a done/failed match_unknown
+            # row blocks INSERT OR IGNORE. UPDATE it in place to seed_known/pending.
+            cur.execute(
+                """
+                UPDATE face_recognition_job
+                   SET job_type = 'seed_known', status = 'pending', priority = 10,
+                       attempts = 0, last_error = NULL,
+                       started_at = NULL, finished_at = NULL
+                 WHERE file_curation_id = ?
+                   AND status IN ('done', 'failed')
+                """,
+                (fid,),
+            )
+            if cur.rowcount:
+                enqueued += 1
+                continue
+            # No done/failed row — try fresh insert (OR IGNORE skips if pending/running).
             cur.execute(
                 """
                 INSERT OR IGNORE INTO face_recognition_job
@@ -296,6 +313,20 @@ def enqueue_seed_for_performer(conn: sqlite3.Connection, performer_id: int) -> i
     enqueued = 0
     for fid in ids:
         try:
+            cur.execute(
+                """
+                UPDATE face_recognition_job
+                   SET job_type = 'seed_known', status = 'pending', priority = 10,
+                       attempts = 0, last_error = NULL,
+                       started_at = NULL, finished_at = NULL
+                 WHERE file_curation_id = ?
+                   AND status IN ('done', 'failed')
+                """,
+                (fid,),
+            )
+            if cur.rowcount:
+                enqueued += 1
+                continue
             cur.execute(
                 """
                 INSERT OR IGNORE INTO face_recognition_job
