@@ -454,6 +454,23 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
     except Exception:
         log.exception("accept_match: proposed_filename rebuild failed file_id=%s", file_curation_id)
 
+    # Search TPDB for the scene by performer + duration to enrich metadata.
+    try:
+        from app.curation.tpdb import tpdb_reenrich_by_performer_duration
+        result = tpdb_reenrich_by_performer_duration(conn, file_curation_id)
+        if result.get("ok"):
+            log.info(
+                "accept_match: tpdb_reenrich ok file_id=%s title=%r studio=%r date=%s",
+                file_curation_id, result.get("title"), result.get("studio"), result.get("date"),
+            )
+        else:
+            log.debug(
+                "accept_match: tpdb_reenrich skipped file_id=%s reason=%s",
+                file_curation_id, result.get("reason"),
+            )
+    except Exception:
+        log.exception("accept_match: tpdb_reenrich failed file_id=%s", file_curation_id)
+
     log.info("accept_match: match_id=%s file_id=%s performer_id=%s",
              match_id, file_curation_id, performer_id)
 

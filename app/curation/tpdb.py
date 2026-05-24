@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import threading
 import time
 import unicodedata
@@ -729,6 +730,28 @@ def _ext_from_path(path: str) -> str:
     return ext or ".mp4"
 
 
+def _probe_duration_sec(path: str) -> float | None:
+    """Return video duration in seconds via ffprobe, or None on failure."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        val = result.stdout.strip()
+        if val:
+            return float(val)
+    except Exception:
+        log.debug("_probe_duration_sec failed path=%r", path, exc_info=True)
+    return None
+
+
 def _rebuild_proposed_filename(
     *,
     studio: str | None,
@@ -753,6 +776,214 @@ def _rebuild_proposed_filename(
     except Exception:
         log.debug("rebuild_proposed_filename failed", exc_info=True)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Post-face-recognition TPDB scene lookup
+# ---------------------------------------------------------------------------
+
+
+def tpdb_reenrich_by_performer_duration(
+    conn: sqlite3.Connection,
+    file_curation_id: int,
+) -> dict:
+    """Search TPDB for the scene after face recognition identified a performer.
+
+    Fetches scenes for the matched performer, optionally filters by probed
+    video duration, and applies studio/title/date when a confident single
+    match is found.  Updates proposed_filename and sets status='approved'.
+
+    Returns {"ok": True, "reason": ...} or {"ok": False, "reason": ...}.
+    """
+    if not is_configured():
+        return {"ok": False, "reason": "tpdb_not_configured"}
+
+    row = conn.execute(
+        """SELECT path, tpdb_scene_id, studio, title, release_date, resolution
+             FROM file_curation WHERE id = ?""",
+        (file_curation_id,),
+    ).fetchone()
+    if row is None:
+        return {"ok": False, "reason": "file_not_found"}
+    path, existing_scene_id, studio, title, release_date, resolution = row
+
+    if existing_scene_id:
+        return {"ok": False, "reason": "already_has_scene_id"}
+
+    perf_rows = conn.execute(
+        """SELECT p.canonical_name FROM file_performer fp
+             JOIN performer p ON p.id = fp.performer_id
+            WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+        (file_curation_id,),
+    ).fetchall()
+    performer_names = [r[0] for r in perf_rows if r[0]]
+    if not performer_names:
+        return {"ok": False, "reason": "no_performers"}
+
+    primary_name = performer_names[0]
+    duration_sec = _probe_duration_sec(str(path)) if path else None
+
+    # Resolve TPDB performer ID.
+    tpdb_id: str | None = None
+    for tp in search_performers(primary_name, limit=5):
+        if not isinstance(tp, dict):
+            continue
+        tp_name = (
+            tp.get("name")
+            or (tp.get("parent") or {}).get("name")
+            or ""
+        )
+        if _ratio(tp_name, primary_name) >= 0.80:
+            tpdb_id = str(tp.get("_id") or tp.get("id") or "")
+            if tpdb_id:
+                break
+
+    if not tpdb_id:
+        log.info(
+            "tpdb_reenrich: no tpdb_id for performer=%r file_id=%s",
+            primary_name, file_curation_id,
+        )
+        return {"ok": False, "reason": "performer_not_found_on_tpdb"}
+
+    # Fetch scenes — three fallback endpoints.
+    scenes: list[dict] = []
+    quoted_id = urllib.parse.quote(tpdb_id, safe="")
+    for attempt_path, attempt_params in [
+        (f"/performers/{quoted_id}/scenes", {"limit": 25}),
+        ("/scenes", {"performer_id": tpdb_id, "limit": 25}),
+        ("/scenes", {"q": primary_name, "query": primary_name, "limit": 25}),
+    ]:
+        try:
+            payload = _get_json(attempt_path, attempt_params)
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(data, list) and data:
+                scenes = data
+                break
+        except TPDBError:
+            continue
+
+    if not scenes:
+        log.info(
+            "tpdb_reenrich: no scenes for performer=%r tpdb_id=%s file_id=%s",
+            primary_name, tpdb_id, file_curation_id,
+        )
+        return {"ok": False, "reason": "no_scenes_found"}
+
+    # Keep only scenes that actually list this performer.
+    def _has_performer(scene: dict) -> bool:
+        for p in scene.get("performers") or []:
+            if not isinstance(p, dict):
+                continue
+            name = (
+                p.get("name")
+                or (p.get("parent") or {}).get("name")
+                or (p.get("parent") or {}).get("full_name")
+                or ""
+            )
+            if _ratio(name, primary_name) >= 0.80:
+                return True
+        return False
+
+    scenes = [s for s in scenes if _has_performer(s)]
+    if not scenes:
+        return {"ok": False, "reason": "no_matching_performer_scenes"}
+
+    # Duration filtering (±10 %) — keep scenes with no duration info too.
+    DURATION_TOLERANCE = 0.10
+    if duration_sec is not None and duration_sec > 60:
+        def _in_range(scene: dict) -> bool:
+            d = _scene_field(scene, "duration")
+            if d is None:
+                return True
+            try:
+                return abs(float(d) - duration_sec) / duration_sec <= DURATION_TOLERANCE
+            except (TypeError, ValueError):
+                return True
+
+        narrowed = [s for s in scenes if _in_range(s)]
+        if narrowed:
+            scenes = narrowed
+
+    # Score by duration proximity; base 0.5 because performer is already confirmed.
+    def _score(scene: dict) -> float:
+        base = 0.5
+        if duration_sec is not None and duration_sec > 60:
+            d = _scene_field(scene, "duration")
+            try:
+                diff_ratio = abs(float(d) - duration_sec) / duration_sec
+                base += 0.4 * max(0.0, 1.0 - diff_ratio * 5)
+            except (TypeError, ValueError):
+                pass
+        return base
+
+    scenes.sort(key=_score, reverse=True)
+
+    if len(scenes) == 1:
+        winner = scenes[0]
+        confidence = "single_match"
+    elif duration_sec is not None:
+        top_score = _score(scenes[0])
+        second_score = _score(scenes[1])
+        if top_score >= 0.80 and (top_score - second_score) >= 0.15:
+            winner = scenes[0]
+            confidence = "duration_match"
+        else:
+            log.info(
+                "tpdb_reenrich: ambiguous performer=%r scenes=%d scores=%.2f/%.2f file_id=%s",
+                primary_name, len(scenes), top_score, second_score, file_curation_id,
+            )
+            return {"ok": False, "reason": "ambiguous"}
+    else:
+        log.info(
+            "tpdb_reenrich: %d scenes, no duration, performer=%r file_id=%s",
+            len(scenes), primary_name, file_curation_id,
+        )
+        return {"ok": False, "reason": "ambiguous_no_duration"}
+
+    # Extract metadata.
+    scene_id = str(_scene_field(winner, "_id", "id") or "")
+    scene_title = str(_scene_field(winner, "title") or "")
+    scene_date = str(_scene_field(winner, "date", "release_date") or "")[:10] or None
+    site_name = str(_scene_field(winner, "site.name", "site.short_name") or "")
+
+    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    updates: dict[str, Any] = {"tpdb_scene_id": scene_id or None, "tpdb_lookup_at": now_iso}
+    if scene_title and not title:
+        updates["title"] = scene_title
+    if site_name and not studio:
+        updates["studio"] = site_name
+    if scene_date and not release_date:
+        updates["release_date"] = scene_date
+
+    _update_file_row(conn, file_curation_id, updates)
+
+    # Rebuild proposed_filename with enriched data.
+    ext = _ext_from_path(str(path)) if path else ".mp4"
+    proposed = _rebuild_proposed_filename(
+        studio=studio or updates.get("studio"),
+        release_date=release_date or updates.get("release_date"),
+        title=title or updates.get("title"),
+        performers=performer_names,
+        resolution=resolution,
+        ext=ext,
+    )
+    if proposed:
+        _update_file_row(conn, file_curation_id, {"proposed_filename": proposed, "status": "approved"})
+
+    conn.commit()
+
+    log.info(
+        "tpdb_reenrich: ok file_id=%s performer=%r scene_id=%s title=%r studio=%r date=%s confidence=%s",
+        file_curation_id, primary_name, scene_id, scene_title, site_name, scene_date, confidence,
+    )
+    return {
+        "ok": True,
+        "reason": confidence,
+        "scene_id": scene_id,
+        "title": scene_title,
+        "studio": site_name,
+        "date": scene_date,
+    }
 
 
 # ---------------------------------------------------------------------------
