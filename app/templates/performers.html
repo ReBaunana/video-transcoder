@@ -795,7 +795,7 @@
   <div class="perf-grid" id="perfGrid">
     {% for p in performers %}
     <a class="perf-card {{ 'active' if selected_performer and p.id == selected_performer.id else '' }}"
-       href="/performers?id={{ p.id }}"
+       href="/performers/{{ p.id }}"
        data-name="{{ p.canonical_name | lower }}"
        data-ready="{{ '1' if p.is_reference_ready else '0' }}">
       <div class="perf-thumb-wrap">
@@ -1078,7 +1078,7 @@
     try {
       await api('POST', '/performers/merge', { source_id: sourceId, target_id: parseInt(target, 10) });
       toast('Merged', 'ok');
-      setTimeout(() => location.href = `/performers?id=${target}`, 700);
+      setTimeout(() => location.href = `/performers/${target}`, 700);
     } catch (e) { toast('Merge failed: ' + e.message, 'err'); }
   }
 
@@ -1108,9 +1108,7 @@
   }
 
   function closeDetail() {
-    const url = new URL(location.href);
-    url.searchParams.delete('id');
-    location.href = url.toString();
+    location.href = '/performers';
   }
 </script>
 {% endblock %}
