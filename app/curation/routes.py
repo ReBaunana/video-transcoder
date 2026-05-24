@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,85 @@ async def _read_json(request: Request) -> dict[str, Any]:
     return data
 
 
+def _get_recent_rename_log(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
+    """Return the most recent rename_log rows, shaped for the library template.
+
+    The template expects ``from``, ``to``, ``ok`` keys per row — the table
+    stores ``from_path``, ``to_path`` and ``success`` so we map them here.
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, file_curation_id, from_path, to_path,
+                   executed_at, success, error_message, rolled_back_at
+              FROM rename_log
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Older schemas without rename_log — degrade gracefully.
+        return []
+    out: list[dict] = []
+    for r in rows:
+        from_path = r['from_path']
+        to_path = r['to_path']
+        out.append({
+            'id':           int(r['id']),
+            'file_id':      int(r['file_curation_id']),
+            'from':         Path(from_path).name if from_path else '',
+            'to':           Path(to_path).name if to_path else '',
+            'from_path':    from_path,
+            'to_path':      to_path,
+            'executed_at':  r['executed_at'],
+            'ok':           bool(r['success']),
+            'error':        r['error_message'],
+            'rolled_back':  r['rolled_back_at'] is not None,
+        })
+    return out
+
+
+def _face_queue_status(conn: sqlite3.Connection) -> dict:
+    """Build the dict the library template renders for the Face queue card.
+
+    ``face_worker.get_worker_status`` returns ``queued`` as the combined
+    pending + running count, plus a boolean ``running`` flag. The template
+    wants ``running`` to be a *count* of jobs currently running so it can sum
+    ``queued + running`` for the badge. Query the table directly to split.
+    """
+    worker = face_worker.get_worker_status()
+    pending = 0
+    running = 0
+    try:
+        cur = conn.execute(
+            """
+            SELECT status, COUNT(*)
+              FROM face_recognition_job
+             WHERE status IN ('pending', 'running')
+             GROUP BY status
+            """
+        )
+        for status, cnt in cur.fetchall():
+            if status == 'pending':
+                pending = int(cnt or 0)
+            elif status == 'running':
+                running = int(cnt or 0)
+    except sqlite3.OperationalError:
+        # Table missing on minimal fixtures — fall back to whatever the worker
+        # gave us so the page still renders.
+        pending = int(worker.get('queued', 0) or 0)
+        running = 0
+    return {
+        'worker_running': bool(worker.get('running', False)),
+        'queued':         pending,
+        'running':        running,
+        'done':           int(worker.get('done', 0) or 0),
+        'failed':         int(worker.get('failed', 0) or 0),
+        'error':          worker.get('error'),
+    }
+
+
 def _enrich_files(conn: sqlite3.Connection, files: list[dict]) -> list[dict]:
     """Attach performer names and face-suggestion counts to each file row.
 
@@ -119,7 +200,12 @@ def _enrich_files(conn: sqlite3.Connection, files: list[dict]) -> list[dict]:
 
     for f in files:
         fid = int(f['id'])
-        f['performers'] = by_file_perf.get(fid, [])
+        perf_list = by_file_perf.get(fid, [])
+        # Template renders ``{{ f.performers | join(', ') }}`` so we expose the
+        # names as a list of strings. The richer dicts (with confidence, slug)
+        # live under ``performer_details`` for any future use.
+        f['performers'] = [p['name'] for p in perf_list if p.get('name')]
+        f['performer_details'] = perf_list
         f['face_suggestions'] = by_file_sugg.get(fid, 0)
     return files
 
@@ -146,6 +232,8 @@ async def library_page(
 
     files: list[dict] = []
     pending_renames: list[dict] = []
+    total_files = 0
+    approved_count = 0
     if selected_mount:
         rows = dbc.list_files_for_mount(
             conn,
@@ -175,23 +263,45 @@ async def library_page(
         for m in MEDIA_MOUNTS
     ]
 
+    # Pull the totals the template renders in the stats row and pagination.
+    # Falls back to 0 for both when no mount is selected.
+    if selected_mount:
+        sel_stats = _stats_by_mount.get(selected_mount, {})
+        total_files = int(sel_stats.get('total', 0) or 0)
+        approved_count = int(sel_stats.get('approved', 0) or 0)
+    total_pages = max(1, math.ceil(total_files / page_size)) if total_files else 1
+
+    # Face queue dict in the shape the library template expects (queued/running
+    # counts plus done/failed totals).
     try:
-        worker_status = face_worker.get_worker_status()
+        face_queue_status = _face_queue_status(conn)
     except Exception as exc:  # pragma: no cover — defensive
-        log.warning('face_worker.get_worker_status failed: %s', exc)
-        worker_status = {'running': False, 'queue_size': 0, 'error': str(exc)}
+        log.warning('face_queue_status failed: %s', exc)
+        face_queue_status = {
+            'worker_running': False, 'queued': 0, 'running': 0,
+            'done': 0, 'failed': 0, 'error': str(exc),
+        }
+
+    rename_log = _get_recent_rename_log(conn, limit=10) if selected_mount else []
 
     context = {
-        'mounts': mounts_ctx,
-        'selected_mount': selected_mount,
-        'status_filter': status,
-        'page': page,
-        'page_size': page_size,
-        'files': files,
-        'pending_renames': pending_renames,
-        'stats': stats,
-        'face_worker': worker_status,
+        'mounts':             mounts_ctx,
+        'selected_mount':     selected_mount,
+        'sel_mount':          selected_mount,
+        'status_filter':      status,
+        'qs_status':          ('&status=' + status) if status else '',
+        'page':               page,
+        'page_size':          page_size,
+        'files':              files,
+        'pending_renames':    pending_renames,
+        'stats':              stats,
+        'face_queue_status':  face_queue_status,
         'face_rec_available': is_face_rec_available(),
+        'total_files':        total_files,
+        'total_pages':        total_pages,
+        'approved_count':     approved_count,
+        'rename_log':         rename_log,
+        'version':            os.getenv('APP_VERSION', 'dev'),
     }
     return templates.TemplateResponse(
         request,

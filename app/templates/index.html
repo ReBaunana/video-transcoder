@@ -305,6 +305,32 @@
       max-width: 280px;
     }
 
+    /* ─── Nav tabs (Transcoder / Library / Performers) ─── */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: .15rem;
+      padding: .2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .nav-link {
+      padding: .35rem .85rem;
+      font-size: .73rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 99px;
+      text-decoration: none;
+      letter-spacing: .01em;
+      transition: color .15s, background .15s;
+    }
+    .nav-link:hover { color: var(--text); }
+    .nav-link.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
     .header-actions { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
 
     .workers-select {
@@ -1674,6 +1700,12 @@
       <span class="dot {{ 'dot-on' if state.running else 'dot-off' }}" id="statusDot"></span>
       <span id="statusText">{% if state.running %}Running{% elif schedule_hour >= 0 %}Idle &nbsp;·&nbsp; next {{ '%02d:00'|format(schedule_hour) }}{% else %}Idle &nbsp;·&nbsp; no schedule{% endif %}</span>
     </div>
+
+    <nav class="nav-tabs" aria-label="Primary">
+      <a href="/" class="nav-link active">Transcoder</a>
+      <a href="/library" class="nav-link">Library</a>
+      <a href="/performers" class="nav-link">Performers</a>
+    </nav>
 
     {% set active_workers = state.workers.values() | select | list | length %}
     <span class="header-file" id="headerFiles"

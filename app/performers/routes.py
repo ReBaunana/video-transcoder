@@ -10,6 +10,8 @@ from __future__ import annotations
 import io
 import json
 import logging
+import math
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -65,12 +67,98 @@ async def _read_json(request: Request) -> dict[str, Any]:
 
 def _get_performer_or_404(conn: sqlite3.Connection, performer_id: int) -> sqlite3.Row:
     row = conn.execute(
-        "SELECT id, canonical_name, slug, profile_thumb FROM performer WHERE id = ?",
+        """
+        SELECT id, canonical_name, slug, profile_thumb,
+               embedding_count, is_reference_ready,
+               (SELECT COUNT(*) FROM file_performer fp WHERE fp.performer_id = performer.id)
+                   AS video_count
+          FROM performer WHERE id = ?
+        """,
         (performer_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail='performer not found')
     return row
+
+
+def _shape_video_rows(rows: list[dict]) -> list[dict]:
+    """Adapt rows from ``dbc.get_performer_videos`` for the performers template.
+
+    The template reads ``v.filename``, ``v.confidence``, ``v.thumbnail`` and
+    ``v.mount``; the query exposes ``path``, ``match_similarity`` and no
+    thumbnail. Map them here so the template doesn't need to know about the
+    raw schema.
+    """
+    out: list[dict] = []
+    for r in rows:
+        path = r.get('path') or ''
+        filename = Path(path).name if path else (r.get('title') or '')
+        out.append({
+            **r,
+            'filename':   filename,
+            'mount':      r.get('mount'),
+            'confidence': r.get('match_similarity') or 0.0,
+            'thumbnail':  r.get('thumbnail') or None,
+            'status':     r.get('status') or 'pending',
+        })
+    return out
+
+
+def _shape_face_match_rows(rows: list[dict]) -> list[dict]:
+    """Adapt face_match_result rows for the performers template.
+
+    Template uses ``v.id``, ``v.filename``, ``v.confidence``, ``v.mount`` and
+    ``v.thumbnail`` — the underlying query returns match-centric keys.
+    """
+    out: list[dict] = []
+    for r in rows:
+        original = r.get('original_path') or ''
+        mount = None
+        if original.startswith('/media/'):
+            parts = original.split('/', 3)
+            if len(parts) >= 3:
+                mount = parts[2]
+        filename = r.get('original_name') or (Path(original).name if original else '')
+        out.append({
+            'id':         r.get('file_id'),
+            'match_id':   r.get('match_id'),
+            'filename':   filename,
+            'confidence': r.get('score') or 0.0,
+            'mount':      mount,
+            'thumbnail':  r.get('thumb_path'),
+            'status':     r.get('status') or 'pending',
+        })
+    return out
+
+
+def _get_unknown_faces(conn: sqlite3.Connection, limit: int = 24) -> list[dict]:
+    """Recent face embeddings with no performer assignment for the index page."""
+    try:
+        rows = conn.execute(
+            """
+            SELECT fe.id              AS id,
+                   fe.thumbnail_path  AS face_thumb,
+                   fc.path            AS source_path
+              FROM face_embedding fe
+              LEFT JOIN file_curation fc ON fc.id = fe.file_curation_id
+             WHERE fe.performer_id IS NULL
+               AND fe.thumbnail_path IS NOT NULL
+             ORDER BY fe.id DESC
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    out: list[dict] = []
+    for r in rows:
+        src = r['source_path'] or ''
+        out.append({
+            'id':              int(r['id']),
+            'face_thumb':      r['face_thumb'],
+            'source_filename': Path(src).name if src else '',
+        })
+    return out
 
 
 # ── Pages ────────────────────────────────────────────────────────────────────
@@ -90,7 +178,8 @@ async def performers_index(
         like = f'%{search}%'
         rows = conn.execute(
             """
-            SELECT id, canonical_name, slug, profile_thumb,
+            SELECT p.id, p.canonical_name, p.slug, p.profile_thumb,
+                   p.embedding_count, p.is_reference_ready,
                    (SELECT COUNT(*) FROM file_performer fp WHERE fp.performer_id = p.id) AS video_count
               FROM performer p
              WHERE canonical_name LIKE ?
@@ -108,16 +197,21 @@ async def performers_index(
         performers = [dict(r) for r in dbc.get_performers_list(conn, page_size, offset)]
         total = conn.execute("SELECT COUNT(*) FROM performer").fetchone()[0]
 
+    total_pages = max(1, math.ceil(int(total) / page_size)) if total else 1
+
     context = {
         'performers':         performers,
         'selected_performer': None,
         'performer_videos':   [],
         'face_matches':       [],
+        'unknown_faces':      _get_unknown_faces(conn),
         'search':             search,
         'page':               page,
         'page_size':          page_size,
         'total':              int(total),
+        'total_pages':        total_pages,
         'face_rec_available': is_face_rec_available(),
+        'version':            os.getenv('APP_VERSION', 'dev'),
     }
     return templates.TemplateResponse(
         request,
@@ -133,7 +227,9 @@ async def performers_detail(performer_id: int, request: Request):
     conn = _db(request)
     selected = _get_performer_or_404(conn, performer_id)
 
-    videos = [dict(r) for r in dbc.get_performer_videos(conn, performer_id)]
+    videos = _shape_video_rows(
+        [dict(r) for r in dbc.get_performer_videos(conn, performer_id)]
+    )
 
     match_rows = conn.execute(
         """
@@ -153,22 +249,27 @@ async def performers_detail(performer_id: int, request: Request):
         """,
         (performer_id,),
     ).fetchall()
-    face_matches = [dict(r) for r in match_rows]
+    face_matches = _shape_face_match_rows([dict(r) for r in match_rows])
 
     # First page of all performers for the sidebar/index — keeps the template
     # simple (one template handles both index and detail views).
     performers = [dict(r) for r in dbc.get_performers_list(conn, PAGE_SIZE, 0)]
+    total = conn.execute("SELECT COUNT(*) FROM performer").fetchone()[0]
+    total_pages = max(1, math.ceil(int(total) / PAGE_SIZE)) if total else 1
 
     context = {
         'performers':         performers,
         'selected_performer': dict(selected),
         'performer_videos':   videos,
         'face_matches':       face_matches,
+        'unknown_faces':      _get_unknown_faces(conn),
         'search':             '',
         'page':               1,
         'page_size':          PAGE_SIZE,
-        'total':              len(performers),
+        'total':              int(total),
+        'total_pages':        total_pages,
         'face_rec_available': is_face_rec_available(),
+        'version':            os.getenv('APP_VERSION', 'dev'),
     }
     return templates.TemplateResponse(
         request,
