@@ -210,9 +210,9 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
 
 
 def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
-    """Enqueue seed_known jobs for single-performer files whose performer has no embeddings.
+    """Enqueue seed_known jobs for single-performer files not yet seeded from video frames.
 
-    Skips files that already have a pending/running seed_known job.
+    Skips files that already have a completed or in-progress seed_known job.
     Priority 10 (runs before match_unknown at priority 100).
     """
     cur = conn.cursor()
@@ -222,9 +222,7 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
             SELECT fp.file_curation_id
               FROM file_performer fp
               JOIN file_curation fc ON fc.id = fp.file_curation_id
-              JOIN performer p      ON p.id  = fp.performer_id
              WHERE fc.status NOT IN ('skipped', 'renamed')
-               AND p.embedding_count = 0
                AND (
                    SELECT COUNT(*) FROM file_performer fp2
                     WHERE fp2.file_curation_id = fp.file_curation_id
@@ -233,7 +231,7 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
                    SELECT 1 FROM face_recognition_job j
                     WHERE j.file_curation_id = fp.file_curation_id
                       AND j.job_type = 'seed_known'
-                      AND j.status IN ('pending', 'running')
+                      AND j.status IN ('pending', 'running', 'done')
                )
             """
         )

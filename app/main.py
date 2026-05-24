@@ -159,6 +159,10 @@ def _startup_face_pipeline(db_path: str) -> None:
             from app.curation.tpdb import seed_performers_without_embeddings
             result = seed_performers_without_embeddings(conn, max_performers=100)
             _log.info('performer seed result: %s', result)
+            # Reload index so workers can immediately use the newly seeded photo embeddings.
+            from app.face.matcher import get_index
+            get_index().reload(conn)
+            _log.info('performer index reloaded after TPDB seeding: size=%d', get_index().size())
         except Exception:
             _log.exception('seed_performers_without_embeddings failed')
 
