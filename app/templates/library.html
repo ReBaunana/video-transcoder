@@ -212,13 +212,13 @@
   }
 
   /* Column widths — content cells use max-width:0 + ellipsis */
-  #filesTable col.col-cb        { width: 32px; }
+  #filesTable col.col-cb        { width: 28px; }
   #filesTable col.col-file      { width: 22%; }
   #filesTable col.col-proposed  { width: 28%; }
-  #filesTable col.col-perf      { width: 18%; }
-  #filesTable col.col-conf      { width: 90px; }
-  #filesTable col.col-status    { width: 80px; }
-  #filesTable col.col-actions   { width: 120px; }
+  #filesTable col.col-perf      { width: 16%; }
+  #filesTable col.col-conf      { width: 80px; }
+  #filesTable col.col-status    { width: 74px; }
+  #filesTable col.col-actions   { width: 160px; }
 
   #filesTable th {
     text-align: left;
@@ -524,7 +524,13 @@
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
-    Scan mount
+    Scan
+  </button>
+  <button class="btn btn-stop" onclick="purgeMissing()" title="Remove files from library that no longer exist on disk">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+    </svg>
+    Remove missing
   </button>
   <button class="btn" onclick="enqueueFaceRec()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -682,9 +688,8 @@
                   <td class="td-actions">
                     <span class="actions-inner">
                       {% if f.status != 'renamed' %}
-                      <button class="btn btn-sm btn-tpdb tpdb-btn" onclick="lookupTpdb({{ f.id }})" title="Lookup on ThePornDB" style="display:none">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        TPDB
+                      <button class="btn btn-sm btn-tpdb tpdb-btn" onclick="lookupTpdb({{ f.id }})" title="Lookup on ThePornDB" style="display:none;padding:.28rem .4rem">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                       </button>
                       {% endif %}
                       {% if f.status == 'pending' %}
@@ -923,6 +928,17 @@
       await apiPost('/library/scan', { mount });
       toast('Scan started for ' + mount, 'ok');
     } catch (e) { toast('Scan failed: ' + e.message, 'err'); }
+  }
+
+  async function purgeMissing() {
+    const mount = new URLSearchParams(location.search).get('mount');
+    if (!mount) return;
+    if (!confirm('Remove all library entries for files that no longer exist on disk?')) return;
+    try {
+      const d = await apiPost('/library/purge-missing', { mount });
+      toast(`Removed ${d.removed} missing files (checked ${d.checked})`, d.removed > 0 ? 'ok' : 'info');
+      if (d.removed > 0) setTimeout(() => location.reload(), 1000);
+    } catch (e) { toast('Purge failed: ' + e.message, 'err'); }
   }
 
   async function enqueueFaceRec() {

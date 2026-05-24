@@ -341,6 +341,48 @@ async def library_scan(request: Request):
     return JSONResponse({'ok': True, 'stats': payload})
 
 
+# ── Purge missing files ──────────────────────────────────────────────────────
+
+@router.post('/library/purge-missing')
+async def library_purge_missing(request: Request):
+    """Delete file_curation rows whose files no longer exist on disk.
+
+    Checks every row for the requested mount and removes those where the
+    resolved path is absent. Cascades to file_performer and face-related rows
+    via foreign-key DELETEs (or explicit cleanup if FK enforcement is off).
+    """
+    body = await _read_json(request)
+    mount = (body.get('mount') or '').strip()
+    if not mount:
+        raise HTTPException(status_code=400, detail='mount required')
+    safe = _safe_mount(mount)
+
+    conn = _db(request)
+    rows = conn.execute(
+        "SELECT id, path, mount FROM file_curation WHERE mount = ?",
+        (safe,),
+    ).fetchall()
+
+    removed = 0
+    for row in rows:
+        path = row['path']
+        p = Path(path) if Path(path).is_absolute() else Path('/media') / safe / path
+        if not p.exists():
+            try:
+                with conn:
+                    conn.execute("DELETE FROM file_performer WHERE file_curation_id = ?", (row['id'],))
+                    conn.execute("DELETE FROM face_recognition_job WHERE file_curation_id = ?", (row['id'],))
+                    conn.execute("DELETE FROM face_match_result WHERE file_curation_id = ?", (row['id'],))
+                    conn.execute("DELETE FROM face_embedding WHERE file_curation_id = ?", (row['id'],))
+                    conn.execute("DELETE FROM file_curation WHERE id = ?", (row['id'],))
+                removed += 1
+            except Exception:
+                log.exception('purge-missing: delete failed for id=%s path=%s', row['id'], path)
+
+    log.info('purge-missing: mount=%s checked=%d removed=%d', safe, len(rows), removed)
+    return JSONResponse({'ok': True, 'removed': removed, 'checked': len(rows)})
+
+
 # ── Per-file actions ─────────────────────────────────────────────────────────
 
 @router.post('/library/files/{file_id}/approve')
