@@ -406,7 +406,7 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
             f'[{info.get("height", 0)}p @ {info.get("bitrate", 0)} kbps]'
         )
         prior_cq = cached.get('cq', '') if cached else ''
-        cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
+        cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original' and not RETRANSCODE_ORIGINALS) else f'guard:{_cq}'
         cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=cq_to_store)
         return 'skipped'
 
@@ -540,7 +540,7 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
             # Intel failed -- NVENC will retry next scan
             cq_to_store = f'guard_intel:{_cq}'
         else:
-            cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original') else f'guard:{_cq}'
+            cq_to_store = 'original' if (codec == 'hevc' and prior_cq == 'original' and not RETRANSCODE_ORIGINALS) else f'guard:{_cq}'
         cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=cq_to_store)
         with _lock:
             state['workers'][slot_id] = None
