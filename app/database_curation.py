@@ -234,6 +234,8 @@ _FILE_CURATION_UPDATABLE = {
     "user_notes",
     "reviewed_at",
     "renamed_at",
+    "tpdb_scene_id",
+    "tpdb_lookup_at",
 }
 
 

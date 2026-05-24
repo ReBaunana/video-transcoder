@@ -8,6 +8,7 @@ during startup so the rest of the application can use the FastAPI-canonical
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -23,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from app import database_curation as dbc
 from app.curation import extractor as curation_extractor
 from app.curation import rename as curation_rename
+from app.curation import tpdb as curation_tpdb
 from app.face import worker as face_worker
 from app.face.model import is_face_rec_available
 
@@ -459,6 +461,137 @@ async def library_rename_rollback(log_id: int, request: Request):
 
 
 # ── Face queue ───────────────────────────────────────────────────────────────
+
+# ── ThePornDB enrichment ─────────────────────────────────────────────────────
+
+@router.get('/library/tpdb/status')
+async def library_tpdb_status() -> JSONResponse:
+    """Quick health-check the frontend uses to decide whether to show TPDB UI."""
+    return JSONResponse({'available': bool(curation_tpdb.is_configured())})
+
+
+@router.post('/library/files/{file_id}/tpdb')
+async def library_file_tpdb(file_id: int, request: Request) -> JSONResponse:
+    """Lookup a single file against ThePornDB and auto-apply if confident."""
+    if not curation_tpdb.is_configured():
+        return JSONResponse(
+            {'ok': False, 'error': 'tpdb_not_configured'},
+            status_code=503,
+        )
+
+    conn = _db(request)
+    row = conn.execute(
+        "SELECT id FROM file_curation WHERE id = ?",
+        (file_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail='file not found')
+
+    try:
+        # Network IO + DB writes — push off the event loop.
+        result = await asyncio.to_thread(
+            curation_tpdb.enrich_file_from_tpdb, conn, int(file_id),
+        )
+    except Exception as exc:
+        log.exception('tpdb enrichment failed file_id=%s', file_id)
+        return JSONResponse(
+            {'ok': False, 'error': str(exc)},
+            status_code=500,
+        )
+
+    return JSONResponse({
+        'ok':              bool(result.get('ok', True)),
+        'applied':         bool(result.get('applied', False)),
+        'score':           float(result.get('score', 0.0) or 0.0),
+        'tpdb_scene_id':   result.get('tpdb_scene_id'),
+        'scene':           result.get('scene'),
+        'title':           (result.get('scene') or {}).get('title'),
+        'studio':          (result.get('scene') or {}).get('studio'),
+        'release_date':    (result.get('scene') or {}).get('date'),
+        'performers':      result.get('performers', []),
+        'candidates':      result.get('candidates', []),
+        'proposed_filename': result.get('proposed_filename'),
+        'error':           result.get('error'),
+    })
+
+
+@router.post('/library/tpdb/batch')
+async def library_tpdb_batch(request: Request) -> JSONResponse:
+    """Run TPDB lookups for a batch of pending files on a mount.
+
+    Body: ``{mount?: str, max_files?: int}``
+    """
+    if not curation_tpdb.is_configured():
+        return JSONResponse(
+            {'ok': False, 'error': 'tpdb_not_configured'},
+            status_code=503,
+        )
+
+    body = await _read_json(request)
+    mount_raw = body.get('mount')
+    mount = _safe_mount(str(mount_raw)) if mount_raw else None
+
+    try:
+        max_files = int(body.get('max_files', 50))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail='max_files must be an integer')
+    max_files = max(1, min(max_files, 200))
+
+    conn = _db(request)
+    sql = """
+        SELECT id
+          FROM file_curation
+         WHERE tpdb_lookup_at IS NULL
+           AND status IN ('pending', 'reviewed')
+    """
+    params: list[Any] = []
+    if mount:
+        sql += " AND mount = ?"
+        params.append(mount)
+    sql += " ORDER BY id LIMIT ?"
+    params.append(int(max_files))
+
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.OperationalError as exc:
+        log.warning('tpdb batch lookup query failed: %s', exc)
+        return JSONResponse(
+            {'ok': False, 'error': f'db_error: {exc}'},
+            status_code=500,
+        )
+
+    ids = [int(r['id']) for r in rows]
+
+    def _run_batch() -> dict[str, int | list[str]]:
+        applied = 0
+        skipped = 0
+        errors_out: list[str] = []
+        for fid in ids:
+            try:
+                res = curation_tpdb.enrich_file_from_tpdb(conn, fid)
+                if res.get('applied'):
+                    applied += 1
+                else:
+                    skipped += 1
+            except Exception as exc:  # pragma: no cover — defensive
+                log.warning('tpdb batch: file_id=%s failed: %s', fid, exc)
+                errors_out.append(f'{fid}: {exc}')
+        return {
+            'applied':  applied,
+            'skipped':  skipped,
+            'errors':   errors_out,
+        }
+
+    summary = await asyncio.to_thread(_run_batch)
+
+    return JSONResponse({
+        'ok':      True,
+        'total':   len(ids),
+        'applied': summary['applied'],
+        'skipped': summary['skipped'],
+        'errors':  summary['errors'],
+    })
+
 
 @router.post('/library/face/enqueue-all')
 async def library_face_enqueue_all(request: Request):

@@ -1,0 +1,762 @@
+"""ThePornDB API client and scene enrichment logic.
+
+Provides:
+- Search helpers for scenes and performers
+- A simple thread-safe token-bucket rate limiter (~60 req/min)
+- A fuzzy scoring function to rank scene matches against a local file row
+- ``enrich_file_from_tpdb`` which auto-applies high-confidence matches
+- ``download_face_image`` for performer face seeding
+- ``migrate_tpdb`` schema migration adding tpdb_scene_id / tpdb_lookup_at
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import sqlite3
+import threading
+import time
+import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Iterable
+
+try:
+    from app.database_curation import (  # type: ignore
+        _FILE_CURATION_UPDATABLE,
+        get_or_create_performer,
+    )
+    from app.curation.extractor import (  # type: ignore
+        ParseResult,
+        build_target_filename,
+    )
+except Exception:  # pragma: no cover — import-path fallback for tests
+    import sys as _sys
+    _here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _here not in _sys.path:
+        _sys.path.insert(0, _here)
+    from database_curation import (  # type: ignore
+        _FILE_CURATION_UPDATABLE,
+        get_or_create_performer,
+    )
+    from curation.extractor import (  # type: ignore
+        ParseResult,
+        build_target_filename,
+    )
+
+
+log = logging.getLogger("curation.tpdb")
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+TPDB_API_KEY: str = os.getenv("TPDB_API_KEY", "")
+TPDB_BASE: str = "https://api.theporndb.net"
+TPDB_TIMEOUT_SEC: float = 12.0
+TPDB_MAX_IMAGE_BYTES: int = 2 * 1024 * 1024  # 2 MiB cap on face image downloads
+TPDB_USER_AGENT: str = "video-transcoder/tpdb-client (+https://github.com/ReBaunana/video-transcoder)"
+
+# Match thresholds
+AUTO_APPLY_SCORE: float = 0.70
+MIN_CANDIDATE_SCORE: float = 0.45
+
+
+def is_configured() -> bool:
+    """Return True when the API key is present in the environment."""
+    return bool(TPDB_API_KEY)
+
+
+# ---------------------------------------------------------------------------
+# Rate limiter — token bucket, ~60 req/min, thread-safe
+# ---------------------------------------------------------------------------
+
+
+class _RateLimiter:
+    """Sliding token-bucket limiter (default 60 events / 60 s).
+
+    Calls to :meth:`acquire` block until a token is available. Thread-safe
+    via a single ``threading.Lock`` — the API only sees one outbound request
+    at a time per process.
+    """
+
+    def __init__(self, max_per_minute: int = 60, min_interval_sec: float = 0.9):
+        self.max_per_minute = max(1, int(max_per_minute))
+        self.min_interval = max(0.0, float(min_interval_sec))
+        self._lock = threading.Lock()
+        self._timestamps: list[float] = []
+        self._last_call: float = 0.0
+
+    def acquire(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            # Enforce minimum spacing between requests so bursts don't blow
+            # past the limit even if the window allows it.
+            wait = (self._last_call + self.min_interval) - now
+            if wait > 0:
+                time.sleep(wait)
+                now = time.monotonic()
+
+            # Trim timestamps older than 60 s
+            cutoff = now - 60.0
+            self._timestamps = [t for t in self._timestamps if t >= cutoff]
+
+            if len(self._timestamps) >= self.max_per_minute:
+                sleep_for = max(0.0, self._timestamps[0] + 60.0 - now)
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+                    now = time.monotonic()
+                    cutoff = now - 60.0
+                    self._timestamps = [t for t in self._timestamps if t >= cutoff]
+
+            self._timestamps.append(now)
+            self._last_call = now
+
+
+_rate_limiter = _RateLimiter(max_per_minute=60, min_interval_sec=0.9)
+
+
+# ---------------------------------------------------------------------------
+# HTTP helpers — stdlib urllib, sync. Async routes call via run_in_executor.
+# ---------------------------------------------------------------------------
+
+
+class TPDBError(Exception):
+    """Wraps any failure (auth, network, decode) talking to ThePornDB."""
+
+
+def _build_url(path: str, params: dict[str, Any] | None = None) -> str:
+    if not path.startswith("/"):
+        path = "/" + path
+    url = TPDB_BASE.rstrip("/") + path
+    if params:
+        cleaned = {k: v for k, v in params.items() if v is not None and v != ""}
+        if cleaned:
+            url = url + "?" + urllib.parse.urlencode(cleaned, doseq=True)
+    return url
+
+
+def _get_json(path: str, params: dict[str, Any] | None = None) -> dict:
+    """GET <TPDB_BASE><path>, return parsed JSON. Honours the rate limiter."""
+    if not is_configured():
+        raise TPDBError("tpdb_not_configured")
+
+    url = _build_url(path, params)
+    _rate_limiter.acquire()
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {TPDB_API_KEY}",
+            "Accept": "application/json",
+            "User-Agent": TPDB_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TPDB_TIMEOUT_SEC) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        log.warning("tpdb http %s for %s", exc.code, url)
+        raise TPDBError(f"http_{exc.code}") from exc
+    except urllib.error.URLError as exc:
+        log.warning("tpdb network error for %s: %s", url, exc)
+        raise TPDBError(f"network_error: {exc}") from exc
+    except Exception as exc:  # pragma: no cover — defensive
+        log.exception("tpdb unexpected error for %s", url)
+        raise TPDBError(f"unexpected: {exc}") from exc
+
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise TPDBError(f"decode_error: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Public search helpers
+# ---------------------------------------------------------------------------
+
+
+def search_scenes(
+    title: str, site: str | None = None, limit: int = 5
+) -> list[dict]:
+    """Hit ``GET /scenes?query=…`` and return the ``data`` list (possibly empty)."""
+    query = (title or "").strip()
+    if not query:
+        return []
+    params: dict[str, Any] = {"q": query, "limit": int(max(1, min(limit, 20)))}
+    # ``query`` is the canonical parameter the API uses; include both for safety
+    # since older deployments accepted ``q``.
+    params["query"] = query
+    if site:
+        params["parse"] = site
+    try:
+        payload = _get_json("/scenes", params)
+    except TPDBError as exc:
+        log.info("search_scenes failed (%s) query=%r", exc, query)
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return list(data) if isinstance(data, list) else []
+
+
+def search_performers(name: str, limit: int = 5) -> list[dict]:
+    """Hit ``GET /performers?query=…`` and return the ``data`` list."""
+    query = (name or "").strip()
+    if not query:
+        return []
+    params = {
+        "q": query,
+        "query": query,
+        "limit": int(max(1, min(limit, 20))),
+    }
+    try:
+        payload = _get_json("/performers", params)
+    except TPDBError as exc:
+        log.info("search_performers failed (%s) name=%r", exc, name)
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return list(data) if isinstance(data, list) else []
+
+
+def get_performer(tpdb_id: str) -> dict | None:
+    """Hit ``GET /performers/{id}`` and return the unwrapped record or None."""
+    pid = (tpdb_id or "").strip()
+    if not pid:
+        return None
+    try:
+        payload = _get_json(f"/performers/{urllib.parse.quote(pid, safe='')}")
+    except TPDBError as exc:
+        log.info("get_performer failed (%s) id=%r", exc, pid)
+        return None
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data")
+    if isinstance(data, dict):
+        return data
+    return payload if "id" in payload or "_id" in payload else None
+
+
+def download_face_image(url: str) -> bytes | None:
+    """Download a performer face image. Caps at TPDB_MAX_IMAGE_BYTES, 8s timeout."""
+    if not url:
+        return None
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return None
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": TPDB_USER_AGENT,
+            "Accept": "image/*",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            # Respect Content-Length when present
+            try:
+                clen = int(resp.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                clen = 0
+            if clen and clen > TPDB_MAX_IMAGE_BYTES:
+                log.info("download_face_image: skip oversize %d bytes %s", clen, url)
+                return None
+            data = resp.read(TPDB_MAX_IMAGE_BYTES + 1)
+            if len(data) > TPDB_MAX_IMAGE_BYTES:
+                log.info("download_face_image: truncated stream exceeded cap %s", url)
+                return None
+            return data if data else None
+    except urllib.error.HTTPError as exc:
+        log.info("download_face_image http %s for %s", exc.code, url)
+        return None
+    except urllib.error.URLError as exc:
+        log.info("download_face_image network error for %s: %s", url, exc)
+        return None
+    except Exception as exc:  # pragma: no cover — defensive
+        log.warning("download_face_image unexpected for %s: %s", url, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Scoring / matching helpers
+# ---------------------------------------------------------------------------
+
+_NORM_STRIP = re.compile(r"[^a-z0-9]+")
+
+
+def _norm(s: str | None) -> str:
+    """Normalise a string for fuzzy comparison (strip accents/punctuation, lowercase)."""
+    if not s:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", str(s))
+    ascii_only = "".join(c for c in decomposed if not unicodedata.combining(c))
+    lowered = ascii_only.lower()
+    return _NORM_STRIP.sub(" ", lowered).strip()
+
+
+def _ratio(a: str | None, b: str | None) -> float:
+    """SequenceMatcher ratio over normalised inputs. 0 if either side is empty."""
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return 0.0
+    return SequenceMatcher(None, na, nb).ratio()
+
+
+def _scene_field(scene: dict, *keys: str) -> Any:
+    """Pull the first non-empty value from a chain of dotted-ish keys."""
+    for key in keys:
+        parts = key.split(".")
+        cur: Any = scene
+        ok = True
+        for p in parts:
+            if isinstance(cur, dict) and p in cur:
+                cur = cur[p]
+            else:
+                ok = False
+                break
+        if ok and cur not in (None, ""):
+            return cur
+    return None
+
+
+def score_scene_match(scene: dict, file_row: dict) -> float:
+    """Combined weighted match score in [0, 1] for ranking candidates."""
+    if not isinstance(scene, dict) or not isinstance(file_row, dict):
+        return 0.0
+
+    # Title comparison — fall back to the stem when title is empty
+    file_title = file_row.get("title") or ""
+    if not file_title and file_row.get("path"):
+        file_title = Path(str(file_row["path"])).stem
+    scene_title = _scene_field(scene, "title") or ""
+    title_ratio = _ratio(scene_title, file_title)
+
+    # Site / studio comparison — TPDB nests site.name / site.slug
+    file_studio = file_row.get("studio") or ""
+    site_name = _scene_field(scene, "site.name", "site.short_name")
+    site_slug = _scene_field(scene, "site.slug")
+    site_ratio = max(
+        _ratio(site_name, file_studio),
+        _ratio(site_slug, file_studio),
+    )
+
+    # Date comparison — exact match is a strong signal; near-misses still count
+    file_date = (file_row.get("release_date") or "")[:10]
+    scene_date_raw = _scene_field(scene, "date", "release_date") or ""
+    scene_date = str(scene_date_raw)[:10]
+    date_bonus = 0.0
+    if file_date and scene_date:
+        if file_date == scene_date:
+            date_bonus = 0.30
+        elif file_date[:7] == scene_date[:7]:
+            date_bonus = 0.18
+        elif file_date[:4] == scene_date[:4]:
+            date_bonus = 0.08
+
+    # Performer overlap — gives a small boost when at least one parsed
+    # performer slug shows up in scene.performers.
+    parsed_performers = file_row.get("performers") or []
+    if isinstance(parsed_performers, str):
+        parsed_performers = [p.strip() for p in parsed_performers.split(",") if p.strip()]
+    performer_bonus = 0.0
+    scene_perf_names: list[str] = []
+    for p in scene.get("performers") or []:
+        if not isinstance(p, dict):
+            continue
+        name = (
+            p.get("name")
+            or (p.get("parent") or {}).get("name")
+            or (p.get("parent") or {}).get("full_name")
+        )
+        if name:
+            scene_perf_names.append(_norm(name))
+    if parsed_performers and scene_perf_names:
+        hits = sum(
+            1
+            for parsed in parsed_performers
+            if any(_ratio(parsed, sp) >= 0.85 for sp in scene_perf_names)
+        )
+        if hits:
+            performer_bonus = min(0.15, 0.07 * hits)
+
+    score = (0.55 * title_ratio) + (0.30 * site_ratio) + date_bonus + performer_bonus
+    return float(max(0.0, min(1.0, score)))
+
+
+# ---------------------------------------------------------------------------
+# DB plumbing for enrichment
+# ---------------------------------------------------------------------------
+
+
+def _file_row_to_dict(conn: sqlite3.Connection, file_curation_id: int) -> dict | None:
+    cur = conn.execute(
+        """
+        SELECT id, path, mount, studio, title, release_date, resolution,
+               extraction_method, extraction_confidence, status,
+               proposed_filename, tpdb_scene_id, tpdb_lookup_at
+          FROM file_curation
+         WHERE id = ?
+        """,
+        (int(file_curation_id),),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    cols = [c[0] for c in cur.description]
+    out = {cols[i]: row[i] for i in range(len(cols))}
+    # Attach performers for scoring
+    try:
+        perf_rows = conn.execute(
+            """
+            SELECT p.canonical_name
+              FROM file_performer fp
+              JOIN performer p ON p.id = fp.performer_id
+             WHERE fp.file_curation_id = ?
+             ORDER BY fp.position
+            """,
+            (int(file_curation_id),),
+        ).fetchall()
+        out["performers"] = [r[0] for r in perf_rows if r and r[0]]
+    except sqlite3.OperationalError:
+        out["performers"] = []
+    return out
+
+
+def _shape_performer_summary(performer: dict) -> dict:
+    """Trim a TPDB performer object down to what we want to render in the UI."""
+    if not isinstance(performer, dict):
+        return {}
+    parent = performer.get("parent") if isinstance(performer.get("parent"), dict) else {}
+    name = (
+        performer.get("name")
+        or parent.get("name")
+        or parent.get("full_name")
+        or ""
+    )
+    return {
+        "name": name,
+        "tpdb_id": (parent.get("id") if parent else None) or performer.get("id"),
+        "slug": (parent.get("slug") if parent else None) or performer.get("slug"),
+        "image": (parent.get("image") if parent else None) or performer.get("image"),
+        "face": (parent.get("face") if parent else None) or performer.get("face"),
+        "thumbnail": (parent.get("thumbnail") if parent else None) or performer.get("thumbnail"),
+    }
+
+
+def _shape_scene_summary(scene: dict, score: float) -> dict:
+    """Trim a TPDB scene for client-side rendering."""
+    if not isinstance(scene, dict):
+        return {}
+    site = scene.get("site") if isinstance(scene.get("site"), dict) else {}
+    performers = [
+        _shape_performer_summary(p) for p in (scene.get("performers") or []) if p
+    ]
+    return {
+        "id": scene.get("id") or scene.get("_id"),
+        "title": scene.get("title"),
+        "date": scene.get("date") or scene.get("release_date"),
+        "url": scene.get("url"),
+        "studio": site.get("name") or site.get("short_name"),
+        "studio_slug": site.get("slug"),
+        "performers": performers,
+        "score": round(float(score), 3),
+    }
+
+
+def _update_file_row(
+    conn: sqlite3.Connection,
+    file_curation_id: int,
+    updates: dict[str, Any],
+) -> None:
+    """Direct UPDATE on file_curation honouring the updatable column allow-list."""
+    filtered = {k: v for k, v in updates.items() if k in _FILE_CURATION_UPDATABLE}
+    if not filtered:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in filtered.keys())
+    set_clause += ", updated_at = datetime('now')"
+    values = list(filtered.values()) + [int(file_curation_id)]
+    conn.execute(
+        f"UPDATE file_curation SET {set_clause} WHERE id = ?",
+        values,
+    )
+
+
+def _replace_file_performers(
+    conn: sqlite3.Connection,
+    file_curation_id: int,
+    performer_names: Iterable[str],
+) -> list[int]:
+    """Wipe auto-source links and re-create them in order. Returns performer ids."""
+    conn.execute(
+        "DELETE FROM file_performer WHERE file_curation_id = ? AND source IN ('auto', 'tpdb')",
+        (int(file_curation_id),),
+    )
+    ids: list[int] = []
+    for position, name in enumerate(performer_names):
+        name = (name or "").strip()
+        if not name:
+            continue
+        try:
+            pid = get_or_create_performer(conn, name)
+        except Exception:
+            continue
+        ids.append(pid)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO file_performer
+                (file_curation_id, performer_id, position, source)
+            VALUES (?, ?, ?, 'tpdb')
+            """,
+            (int(file_curation_id), pid, position),
+        )
+    return ids
+
+
+def _ext_from_path(path: str) -> str:
+    ext = Path(path).suffix.lower()
+    return ext or ".mp4"
+
+
+def _rebuild_proposed_filename(
+    *,
+    studio: str | None,
+    release_date: str | None,
+    title: str | None,
+    performers: list[str],
+    resolution: str | None,
+    ext: str,
+) -> str | None:
+    try:
+        pr = ParseResult(
+            pattern_id="tpdb",
+            confidence=1.0,
+            performers=list(performers or []),
+            studio=studio or None,
+            release_date=release_date or None,
+            title=title or None,
+            resolution=resolution or None,
+            ext=ext or ".mp4",
+        )
+        return build_target_filename(pr)
+    except Exception:
+        log.debug("rebuild_proposed_filename failed", exc_info=True)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main enrichment entry point
+# ---------------------------------------------------------------------------
+
+
+def enrich_file_from_tpdb(
+    conn: sqlite3.Connection, file_curation_id: int
+) -> dict:
+    """Search TPDB for the best scene match and (optionally) auto-apply it.
+
+    Behaviour:
+    - score > AUTO_APPLY_SCORE → update file_curation + performers, return applied=True
+    - MIN_CANDIDATE_SCORE < score ≤ AUTO_APPLY_SCORE → return candidates for review
+    - otherwise → applied=False, candidates=[], scene=None
+    """
+    if not is_configured():
+        return {
+            "applied": False,
+            "ok": False,
+            "error": "tpdb_not_configured",
+            "scene": None,
+            "performers": [],
+            "candidates": [],
+            "score": 0.0,
+        }
+
+    row = _file_row_to_dict(conn, file_curation_id)
+    if row is None:
+        return {
+            "applied": False,
+            "ok": False,
+            "error": "file_not_found",
+            "scene": None,
+            "performers": [],
+            "candidates": [],
+            "score": 0.0,
+        }
+
+    # Build search query — prefer the parsed title, fall back to the filename stem.
+    query = (row.get("title") or "").strip()
+    if not query and row.get("path"):
+        query = Path(str(row["path"])).stem
+    if not query:
+        return {
+            "applied": False,
+            "ok": True,
+            "scene": None,
+            "performers": [],
+            "candidates": [],
+            "score": 0.0,
+            "error": "no_query",
+        }
+
+    scenes = search_scenes(query, site=row.get("studio"), limit=5)
+    scored: list[tuple[float, dict]] = []
+    for sc in scenes:
+        s = score_scene_match(sc, row)
+        if s >= MIN_CANDIDATE_SCORE:
+            scored.append((s, sc))
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    # Always stamp tpdb_lookup_at so we don't keep re-searching for no-result files.
+    now_iso = datetime.utcnow().isoformat(timespec="seconds")
+
+    if not scored:
+        try:
+            _update_file_row(conn, file_curation_id, {"tpdb_lookup_at": now_iso})
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            log.exception("enrich: failed to stamp tpdb_lookup_at id=%s", file_curation_id)
+        return {
+            "applied": False,
+            "ok": True,
+            "scene": None,
+            "performers": [],
+            "candidates": [],
+            "score": 0.0,
+        }
+
+    best_score, best_scene = scored[0]
+
+    if best_score < AUTO_APPLY_SCORE:
+        try:
+            _update_file_row(conn, file_curation_id, {"tpdb_lookup_at": now_iso})
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        candidates = [_shape_scene_summary(sc, sc_score) for sc_score, sc in scored]
+        return {
+            "applied": False,
+            "ok": True,
+            "scene": None,
+            "performers": [],
+            "candidates": candidates,
+            "score": float(best_score),
+        }
+
+    # ── Auto-apply ───────────────────────────────────────────────────────
+    site = best_scene.get("site") if isinstance(best_scene.get("site"), dict) else {}
+    new_studio = site.get("name") or site.get("short_name") or row.get("studio")
+    new_title = best_scene.get("title") or row.get("title")
+    new_date_raw = best_scene.get("date") or best_scene.get("release_date") or row.get("release_date")
+    new_date = str(new_date_raw)[:10] if new_date_raw else row.get("release_date")
+    scene_tpdb_id = best_scene.get("id") or best_scene.get("_id")
+    scene_tpdb_id_str = str(scene_tpdb_id) if scene_tpdb_id is not None else None
+
+    performer_names: list[str] = []
+    for p in best_scene.get("performers") or []:
+        if not isinstance(p, dict):
+            continue
+        parent = p.get("parent") if isinstance(p.get("parent"), dict) else {}
+        name = (
+            parent.get("name")
+            or parent.get("full_name")
+            or p.get("name")
+            or ""
+        )
+        name = name.strip()
+        if name and name not in performer_names:
+            performer_names.append(name)
+
+    try:
+        _update_file_row(
+            conn,
+            file_curation_id,
+            {
+                "studio": new_studio,
+                "title": new_title,
+                "release_date": new_date,
+                "tpdb_scene_id": scene_tpdb_id_str,
+                "tpdb_lookup_at": now_iso,
+            },
+        )
+        if performer_names:
+            _replace_file_performers(conn, file_curation_id, performer_names)
+
+        proposed = _rebuild_proposed_filename(
+            studio=new_studio,
+            release_date=new_date,
+            title=new_title,
+            performers=performer_names,
+            resolution=row.get("resolution"),
+            ext=_ext_from_path(str(row.get("path") or "")),
+        )
+        if proposed:
+            _update_file_row(conn, file_curation_id, {"proposed_filename": proposed})
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        log.exception("enrich: auto-apply failed id=%s", file_curation_id)
+        return {
+            "applied": False,
+            "ok": False,
+            "error": f"db_error: {exc}",
+            "scene": _shape_scene_summary(best_scene, best_score),
+            "performers": performer_names,
+            "candidates": [_shape_scene_summary(sc, sc_score) for sc_score, sc in scored[1:4]],
+            "score": float(best_score),
+        }
+
+    return {
+        "applied": True,
+        "ok": True,
+        "scene": _shape_scene_summary(best_scene, best_score),
+        "performers": performer_names,
+        "candidates": [_shape_scene_summary(sc, sc_score) for sc_score, sc in scored[1:4]],
+        "score": float(best_score),
+        "tpdb_scene_id": scene_tpdb_id_str,
+        "proposed_filename": _rebuild_proposed_filename(
+            studio=new_studio,
+            release_date=new_date,
+            title=new_title,
+            performers=performer_names,
+            resolution=row.get("resolution"),
+            ext=_ext_from_path(str(row.get("path") or "")),
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Schema migration
+# ---------------------------------------------------------------------------
+
+_TPDB_MIGRATION = (
+    "ALTER TABLE file_curation ADD COLUMN tpdb_scene_id TEXT",
+    "ALTER TABLE file_curation ADD COLUMN tpdb_lookup_at TEXT",
+)
+
+
+def migrate_tpdb(conn: sqlite3.Connection) -> None:
+    """Add tpdb_scene_id / tpdb_lookup_at columns. Idempotent."""
+    for stmt in _TPDB_MIGRATION:
+        try:
+            conn.execute(stmt)
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            # "duplicate column name" — already migrated. Anything else is logged.
+            msg = str(exc).lower()
+            if "duplicate column" in msg:
+                continue
+            log.warning("migrate_tpdb: %s (statement=%s)", exc, stmt)
+    # Add a helpful index on tpdb_scene_id for reverse lookups.
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fc_tpdb_scene ON file_curation(tpdb_scene_id)"
+        )
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        log.warning("migrate_tpdb: index creation failed: %s", exc)

@@ -84,6 +84,14 @@ async def startup():
     except Exception as exc:
         log.error(f'init_curation failed: {exc}')
 
+    # Apply TPDB schema migration after the base schema is in place. The
+    # migration is idempotent (it catches "duplicate column" errors).
+    try:
+        from app.curation.tpdb import migrate_tpdb
+        migrate_tpdb(db)
+    except Exception as exc:
+        log.error(f'migrate_tpdb failed: {exc}')
+
     # Make the shared DB connection available to APIRouters via app.state.
     app.state.db = db
 

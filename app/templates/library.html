@@ -342,6 +342,27 @@
   }
   .face-link:hover { background: rgba(251,191,36,.2); }
 
+  /* ─── TPDB badge ─── */
+  .tpdb-badge {
+    display: inline-block;
+    margin-left: .35rem;
+    padding: 1px 6px;
+    font-size: .6rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: var(--cyan, #67e8f9);
+    background: rgba(103, 232, 249, .08);
+    border: 1px solid rgba(103, 232, 249, .35);
+    border-radius: 4px;
+    font-family: 'Inter', sans-serif;
+    vertical-align: 1px;
+  }
+  .btn-tpdb {
+    color: var(--cyan, #67e8f9);
+    border-color: rgba(103, 232, 249, .3);
+  }
+  .btn-tpdb:hover { background: rgba(103, 232, 249, .08); }
+
   /* ─── Checkbox ────────────────────────────── */
   input[type="checkbox"] {
     width: 14px;
@@ -511,6 +532,12 @@
     </svg>
     Detect Faces
   </button>
+  <button class="btn" id="tpdbBatchBtn" onclick="batchTpdb()" title="Lookup pending files on ThePornDB" style="display:none">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v6M8 11h6"/>
+    </svg>
+    TPDB Batch
+  </button>
   {% endif %}
 {% endblock %}
 
@@ -637,6 +664,7 @@
                   <td class="td-file" title="{{ f.filename }}">{{ f.filename }}</td>
                   <td class="td-proposed" title="{{ f.proposed_filename or '' }}">
                     {% if f.proposed_filename %}{{ f.proposed_filename }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+                    {% if f.tpdb_scene_id %}<span class="tpdb-badge" title="Enriched from ThePornDB">TPDB</span>{% endif %}
                   </td>
                   <td class="td-performers" title="{{ (f.performers or []) | join(', ') }}">
                     {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
@@ -653,6 +681,12 @@
                   <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
                   <td class="td-actions">
                     <span class="actions-inner">
+                      {% if f.status != 'renamed' %}
+                      <button class="btn btn-sm btn-tpdb tpdb-btn" onclick="lookupTpdb({{ f.id }})" title="Lookup on ThePornDB" style="display:none">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        TPDB
+                      </button>
+                      {% endif %}
                       {% if f.status == 'pending' %}
                       <button class="btn btn-sm btn-run" onclick="approveFile({{ f.id }})">
                         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -912,5 +946,102 @@
       setTimeout(() => location.reload(), 1200);
     } catch (e) { toast('Rename failed: ' + e.message, 'err'); }
   }
+
+  /* ── TPDB integration ───────────────────────────────────── */
+  let _tpdbAvailable = null;
+
+  async function checkTpdbAvailability() {
+    try {
+      const r = await fetch('/library/tpdb/status', { cache: 'no-store' });
+      if (!r.ok) return false;
+      const data = await r.json();
+      _tpdbAvailable = !!data.available;
+      return _tpdbAvailable;
+    } catch (_) { return false; }
+  }
+
+  function _showTpdbControls(visible) {
+    const display = visible ? '' : 'none';
+    document.querySelectorAll('.tpdb-btn').forEach(b => { b.style.display = display; });
+    const batchBtn = document.getElementById('tpdbBatchBtn');
+    if (batchBtn) batchBtn.style.display = visible ? '' : 'none';
+  }
+
+  async function lookupTpdb(id) {
+    if (_tpdbAvailable === false) {
+      toast('TPDB not configured (set TPDB_API_KEY)', 'err');
+      return;
+    }
+    const tr = document.querySelector(`tr[data-id="${id}"]`);
+    const btn = tr && tr.querySelector('.tpdb-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const res = await apiPost(`/library/files/${id}/tpdb`);
+      if (!res.ok) {
+        toast('TPDB lookup failed: ' + (res.error || 'unknown'), 'err');
+        return;
+      }
+      if (res.applied) {
+        const pct = Math.round((res.score || 0) * 100);
+        toast(`TPDB match applied (${pct}%)`, 'ok');
+        // Refresh the row inline: update proposed filename + badge + performers.
+        if (tr) {
+          const propCell = tr.querySelector('.td-proposed');
+          if (propCell && res.proposed_filename) {
+            propCell.firstChild && (propCell.textContent = '');
+            propCell.textContent = res.proposed_filename;
+            propCell.setAttribute('title', res.proposed_filename);
+            const badge = document.createElement('span');
+            badge.className = 'tpdb-badge';
+            badge.title = 'Enriched from ThePornDB';
+            badge.textContent = 'TPDB';
+            propCell.appendChild(document.createTextNode(' '));
+            propCell.appendChild(badge);
+          }
+          const perfCell = tr.querySelector('.td-performers');
+          if (perfCell && Array.isArray(res.performers) && res.performers.length) {
+            perfCell.textContent = res.performers.join(', ');
+            perfCell.setAttribute('title', res.performers.join(', '));
+          }
+        }
+      } else if (res.candidates && res.candidates.length) {
+        toast(`TPDB found ${res.candidates.length} candidate(s); none confident enough`, 'ok');
+      } else {
+        toast('TPDB: no match', 'err');
+      }
+    } catch (e) {
+      toast('TPDB lookup error: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'TPDB'; }
+    }
+  }
+
+  async function batchTpdb() {
+    if (_tpdbAvailable === false) {
+      toast('TPDB not configured (set TPDB_API_KEY)', 'err');
+      return;
+    }
+    const mount = new URLSearchParams(location.search).get('mount');
+    if (!mount) { toast('Pick a mount first', 'err'); return; }
+    if (!confirm(`Run TPDB lookup for up to 50 pending files in ${mount}?`)) return;
+    const btn = document.getElementById('tpdbBatchBtn');
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = '…'; }
+    try {
+      const res = await apiPost('/library/tpdb/batch', { mount, max_files: 50 });
+      if (!res.ok) {
+        toast('TPDB batch failed: ' + (res.error || 'unknown'), 'err');
+        return;
+      }
+      toast(`TPDB batch: ${res.applied} applied, ${res.skipped} skipped (of ${res.total})`, 'ok');
+      setTimeout(() => location.reload(), 1400);
+    } catch (e) {
+      toast('TPDB batch error: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || 'TPDB Batch'; }
+    }
+  }
+
+  // Decide once on page load whether to show TPDB controls.
+  checkTpdbAvailability().then(ok => _showTpdbControls(!!ok));
 </script>
 {% endblock %}

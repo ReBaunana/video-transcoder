@@ -7,6 +7,7 @@ to ``{'ok': False, 'error': 'face_rec_unavailable'}`` when it isn't installed.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
@@ -28,9 +29,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app import database_curation as dbc
+from app.curation import tpdb as curation_tpdb
 from app.face import worker as face_worker
 from app.face import matcher as face_matcher
-from app.face.model import is_face_rec_available
+from app.face.model import embed_to_blob, is_face_rec_available
 
 router = APIRouter()
 templates = Jinja2Templates(directory='app/templates')
@@ -678,3 +680,229 @@ async def performers_face_match_reject(
         log.exception('reject_match failed match_id=%s', match_id)
         return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
     return JSONResponse({'ok': True})
+
+
+# ── TPDB face seeding ────────────────────────────────────────────────────────
+
+def _resolve_tpdb_performer(
+    tpdb_performer_id: str | None, tpdb_name: str | None,
+) -> dict | None:
+    """Locate a TPDB performer by ID (preferred) or by best-match name."""
+    if tpdb_performer_id:
+        record = curation_tpdb.get_performer(tpdb_performer_id)
+        if record:
+            return record
+    if tpdb_name:
+        candidates = curation_tpdb.search_performers(tpdb_name, limit=5)
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def _collect_image_urls(performer: dict) -> list[str]:
+    """Return ordered list of image URLs to try (face > image > thumbnail)."""
+    urls: list[str] = []
+    parent = performer.get('parent') if isinstance(performer.get('parent'), dict) else {}
+    for src in (performer, parent):
+        if not isinstance(src, dict):
+            continue
+        for key in ('face', 'image', 'thumbnail', 'poster'):
+            val = src.get(key)
+            if isinstance(val, str) and val and val not in urls:
+                urls.append(val)
+        # Some payloads nest under "posters"/"images" arrays
+        for key in ('posters', 'images'):
+            val = src.get(key)
+            if isinstance(val, list):
+                for item in val:
+                    if isinstance(item, str) and item not in urls:
+                        urls.append(item)
+                    elif isinstance(item, dict):
+                        for k in ('url', 'src', 'href'):
+                            v = item.get(k)
+                            if isinstance(v, str) and v and v not in urls:
+                                urls.append(v)
+    return urls
+
+
+def _seed_performer_from_tpdb_sync(
+    conn: sqlite3.Connection,
+    performer_id: int,
+    tpdb_performer_id: str | None,
+    tpdb_name: str | None,
+) -> dict[str, Any]:
+    """Synchronous seed: download image, run InsightFace, store embeddings.
+
+    Runs inside a worker thread because every step blocks: network, ONNX model
+    inference, and DB writes. The caller (an async route) hands us off via
+    ``asyncio.to_thread``.
+    """
+    record = _resolve_tpdb_performer(tpdb_performer_id, tpdb_name)
+    if not record:
+        return {'ok': False, 'error': 'performer_not_found', 'embeddings_added': 0}
+
+    urls = _collect_image_urls(record)
+    if not urls:
+        return {'ok': False, 'error': 'no_face_image', 'embeddings_added': 0}
+
+    # Deferred heavy imports — only when we have something to process.
+    try:
+        import numpy as np  # type: ignore
+        from PIL import Image  # type: ignore
+    except ImportError as exc:
+        log.warning('seed: numpy/Pillow missing: %s', exc)
+        return {'ok': False, 'error': 'face_rec_unavailable', 'embeddings_added': 0}
+
+    try:
+        from app.face.model import get_face_app
+        face_app = get_face_app()
+    except Exception as exc:
+        log.exception('seed: face app unavailable')
+        return {
+            'ok': False,
+            'error': f'face_app_unavailable: {exc}',
+            'embeddings_added': 0,
+        }
+
+    embeddings_added = 0
+    last_error: str | None = None
+    for url in urls:
+        raw = curation_tpdb.download_face_image(url)
+        if not raw:
+            last_error = 'download_failed'
+            continue
+        try:
+            img = Image.open(io.BytesIO(raw)).convert('RGB')
+            arr = np.array(img)
+        except Exception as exc:
+            last_error = f'decode_failed: {exc}'
+            continue
+        try:
+            faces = face_app.get(arr)
+        except Exception as exc:
+            last_error = f'detection_failed: {exc}'
+            continue
+        if not faces:
+            last_error = 'no_face_detected'
+            continue
+
+        # Pick the largest detected face (most likely the subject).
+        def _area(f):
+            x1, y1, x2, y2 = f.bbox[:4]
+            return max(0.0, float((x2 - x1) * (y2 - y1)))
+
+        face = max(faces, key=_area)
+        embedding = getattr(face, 'normed_embedding', None)
+        if embedding is None:
+            embedding = getattr(face, 'embedding', None)
+        if embedding is None:
+            last_error = 'embedding_missing'
+            continue
+
+        try:
+            blob = embed_to_blob(np.asarray(embedding, dtype=np.float32))
+            bbox = [float(v) for v in face.bbox[:4]]
+            bbox_json = json.dumps([round(v, 2) for v in bbox])
+            det_score = float(getattr(face, 'det_score', 0.0) or 0.0)
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO face_embedding
+                        (performer_id, file_curation_id, source, embedding,
+                         det_score, bbox, frame_time_sec, thumbnail_path, quality_score)
+                    VALUES (?, NULL, 'tpdb_seed', ?, ?, ?, NULL, NULL, NULL)
+                    """,
+                    (int(performer_id), blob, det_score, bbox_json),
+                )
+                # Recount + flip is_reference_ready when crossing the threshold.
+                total = int(conn.execute(
+                    "SELECT COUNT(*) FROM face_embedding WHERE performer_id = ?",
+                    (int(performer_id),),
+                ).fetchone()[0])
+                conn.execute(
+                    """
+                    UPDATE performer
+                       SET embedding_count = ?,
+                           is_reference_ready = CASE WHEN ? >= 1 THEN 1 ELSE is_reference_ready END
+                     WHERE id = ?
+                    """,
+                    (total, total, int(performer_id)),
+                )
+            embeddings_added += 1
+        except Exception as exc:
+            log.exception('seed: DB write failed performer_id=%s', performer_id)
+            last_error = f'db_error: {exc}'
+            continue
+
+    if embeddings_added == 0:
+        return {
+            'ok': False,
+            'error': last_error or 'no_embeddings_added',
+            'embeddings_added': 0,
+        }
+
+    # Best-effort: refresh the face matcher index so newly seeded embeddings
+    # participate in matching without a restart.
+    try:
+        reload_fn = getattr(face_matcher, 'reload_index', None)
+        if callable(reload_fn):
+            reload_fn(conn)
+    except Exception as exc:  # pragma: no cover — defensive
+        log.warning('seed: reload_index failed: %s', exc)
+
+    return {
+        'ok': True,
+        'embeddings_added': embeddings_added,
+        'tpdb_performer': {
+            'id': record.get('id') or record.get('_id'),
+            'name': record.get('name') or record.get('full_name'),
+            'slug': record.get('slug'),
+        },
+    }
+
+
+@router.post('/performers/{performer_id}/tpdb-seed')
+async def performers_tpdb_seed(performer_id: int, request: Request) -> JSONResponse:
+    """Seed face embeddings for a performer using TPDB profile imagery.
+
+    Body: ``{tpdb_performer_id?: str, tpdb_name?: str}`` — at least one is
+    required. If neither is supplied we fall back to the performer's canonical
+    name as a search query.
+    """
+    if not curation_tpdb.is_configured():
+        return JSONResponse(
+            {'ok': False, 'error': 'tpdb_not_configured', 'embeddings_added': 0},
+            status_code=503,
+        )
+    if not is_face_rec_available():
+        return JSONResponse(
+            {'ok': False, 'error': 'face_rec_unavailable', 'embeddings_added': 0},
+            status_code=503,
+        )
+
+    conn = _db(request)
+    performer = _get_performer_or_404(conn, performer_id)
+
+    body = await _read_json(request)
+    tpdb_performer_id = (body.get('tpdb_performer_id') or '').strip() or None
+    tpdb_name = (body.get('tpdb_name') or '').strip() or None
+    if not tpdb_performer_id and not tpdb_name:
+        tpdb_name = performer['canonical_name']
+
+    try:
+        result = await asyncio.to_thread(
+            _seed_performer_from_tpdb_sync,
+            conn,
+            int(performer_id),
+            tpdb_performer_id,
+            tpdb_name,
+        )
+    except Exception as exc:
+        log.exception('tpdb-seed failed performer_id=%s', performer_id)
+        return JSONResponse(
+            {'ok': False, 'error': str(exc), 'embeddings_added': 0},
+            status_code=500,
+        )
+
+    status_code = 200 if result.get('ok') else 422
+    return JSONResponse(result, status_code=status_code)
