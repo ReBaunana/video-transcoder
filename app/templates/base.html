@@ -333,6 +333,63 @@
       from { opacity: 0; transform: translateY(7px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* ─── Sys bar (all tabs) ────────────────────────── */
+    #sysBar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 5px 1.75rem;
+      background: rgba(8,8,16,.92);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .sys-item { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+    .sys-lbl {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      white-space: nowrap;
+    }
+    .sys-track {
+      width: 72px;
+      height: 5px;
+      background: var(--surface-3);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .sys-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--green);
+      width: 0%;
+      transition: width .6s ease, background-color .6s ease;
+    }
+    .sys-fill.warn { background: var(--yellow); }
+    .sys-fill.crit { background: var(--red); }
+    .sys-fill-cyan { background: var(--cyan) !important; }
+    .sys-pct {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      width: 30px;
+      text-align: right;
+      font-size: 11px;
+    }
+    .sys-sep { width: 1px; height: 12px; background: var(--border); flex-shrink: 0; }
+    .sys-net-val {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      min-width: 52px;
+    }
+    .sys-arrow { color: var(--text-muted); font-size: 10px; }
+
+    @media (prefers-color-scheme: light) { #sysBar { background: rgba(240,241,248,.92); } }
+    [data-theme="light"] #sysBar { background: rgba(240,241,248,.92); }
+    [data-theme="dark"]  #sysBar { background: rgba(8,8,16,.92); }
+    @media (max-width: 640px) { #sysBar { flex-wrap: wrap; gap: 7px 14px; padding: 5px .9rem; } }
   </style>
   {% block head_extra %}{% endblock %}
 </head>
@@ -362,12 +419,88 @@
     {% block header_actions %}{% endblock %}
   </div>
 </header>
+<!-- ═══ SYS BAR (sticky, all tabs) ═════════════════════════ -->
+<div id="sysBar">
+  <div class="sys-item">
+    <span class="sys-lbl">CPU</span>
+    <div class="sys-track"><div class="sys-fill" id="cpuFill"></div></div>
+    <span class="sys-pct" id="cpuPct">—</span>
+  </div>
+  <div class="sys-sep"></div>
+  <div class="sys-item">
+    <span class="sys-lbl">NVIDIA</span>
+    <div class="sys-track"><div class="sys-fill" id="gpuFill"></div></div>
+    <span class="sys-pct" id="gpuPct">—</span>
+  </div>
+  <div class="sys-sep" id="intelSep" style="display:none"></div>
+  <div class="sys-item" id="intelItem" style="display:none">
+    <span class="sys-lbl">Intel</span>
+    <div class="sys-track"><div class="sys-fill sys-fill-cyan" id="intelFill"></div></div>
+    <span class="sys-pct" id="intelPct">—</span>
+  </div>
+  <div class="sys-sep"></div>
+  <div class="sys-item">
+    <span class="sys-lbl">RAM</span>
+    <div class="sys-track"><div class="sys-fill" id="memFill"></div></div>
+    <span class="sys-pct" id="memPct">—</span>
+  </div>
+  <div class="sys-sep"></div>
+  <div class="sys-item">
+    <span class="sys-lbl">ETH</span>
+    <span class="sys-arrow">↓</span>
+    <span class="sys-net-val" id="rxVal">— MB/s</span>
+    <span class="sys-arrow">↑</span>
+    <span class="sys-net-val" id="txVal">— MB/s</span>
+  </div>
+</div>
 {% block header_extra %}{% endblock %}
 </div><!-- /#topBar -->
 
 {% block content %}{% endblock %}
 
 {% block body_end %}{% endblock %}
+
+<script>
+(function () {
+  function _updateSysBar(id_fill, id_pct, pct) {
+    const fill  = document.getElementById(id_fill);
+    const label = document.getElementById(id_pct);
+    if (!fill || !label) return;
+    if (pct < 0) { label.textContent = 'N/A'; return; }
+    fill.style.width = pct + '%';
+    fill.className = 'sys-fill' + (pct >= 80 ? ' crit' : pct >= 60 ? ' warn' : '');
+    label.textContent = Math.round(pct) + '%';
+  }
+  function _fmtMbps(v) {
+    if (v < 0.05) return '0 MB/s';
+    return (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' MB/s';
+  }
+  setInterval(async () => {
+    try {
+      const d = await fetch('/api/sysinfo').then(r => r.json());
+      _updateSysBar('cpuFill', 'cpuPct', d.cpu);
+      _updateSysBar('memFill', 'memPct', d.mem);
+      _updateSysBar('gpuFill', 'gpuPct', d.gpu);
+      const intelVideo = d.intel && d.intel.video !== undefined ? d.intel.video : -1;
+      const intelItem  = document.getElementById('intelItem');
+      const intelSep   = document.getElementById('intelSep');
+      if (intelItem && intelSep) {
+        const show = intelVideo >= 0;
+        intelItem.style.display = show ? '' : 'none';
+        intelSep.style.display  = show ? '' : 'none';
+        if (show) {
+          document.getElementById('intelFill').style.width = intelVideo + '%';
+          document.getElementById('intelPct').textContent  = Math.round(intelVideo) + '%';
+        }
+      }
+      const rx = document.getElementById('rxVal');
+      const tx = document.getElementById('txVal');
+      if (rx) rx.textContent = _fmtMbps(d.rx_mbps);
+      if (tx) tx.textContent = _fmtMbps(d.tx_mbps);
+    } catch(e) {}
+  }, 3000);
+})();
+</script>
 
 </body>
 </html>
