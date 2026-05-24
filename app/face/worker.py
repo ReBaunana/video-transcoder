@@ -121,16 +121,30 @@ def enqueue_job(
     try:
         cur.execute(
             """
-            SELECT 1 FROM face_recognition_job
+            SELECT status FROM face_recognition_job
              WHERE file_curation_id = ?
-               AND job_type = ?
-               AND status IN ('pending', 'running')
              LIMIT 1
             """,
-            (file_curation_id, job_type),
+            (file_curation_id,),
         )
-        if cur.fetchone() is not None:
-            return False
+        row = cur.fetchone()
+        if row is not None:
+            existing_status = row[0]
+            if existing_status in ("pending", "running"):
+                return False
+            # done/failed row exists — update it in place (UNIQUE constraint prevents INSERT).
+            cur.execute(
+                """
+                UPDATE face_recognition_job
+                   SET job_type = ?, status = 'pending', priority = ?,
+                       attempts = 0, last_error = NULL,
+                       enqueued_at = ?, started_at = NULL, finished_at = NULL
+                 WHERE file_curation_id = ?
+                """,
+                (job_type, priority, int(time.time()), file_curation_id),
+            )
+            conn.commit()
+            return True
 
         cur.execute(
             """
@@ -190,6 +204,22 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
     enqueued = 0
     for fid in ids:
         try:
+            # Flip done/failed seed_known rows to match_unknown/pending in place;
+            # the UNIQUE(file_curation_id) constraint blocks a plain INSERT.
+            cur.execute(
+                """
+                UPDATE face_recognition_job
+                   SET job_type = 'match_unknown', status = 'pending', priority = 100,
+                       attempts = 0, last_error = NULL,
+                       started_at = NULL, finished_at = NULL
+                 WHERE file_curation_id = ?
+                   AND status IN ('done', 'failed')
+                """,
+                (fid,),
+            )
+            if cur.rowcount:
+                enqueued += 1
+                continue
             cur.execute(
                 """
                 INSERT OR IGNORE INTO face_recognition_job
