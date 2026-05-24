@@ -156,27 +156,25 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
         log.exception("enqueue_all_unknown: select failed")
         return 0
 
-    now = int(time.time())
     enqueued = 0
-    try:
-        for fid in ids:
+    for fid in ids:
+        try:
             cur.execute(
                 """
-                INSERT INTO face_recognition_job
+                INSERT OR IGNORE INTO face_recognition_job
                     (file_curation_id, job_type, status, priority, attempts,
-                     last_error, enqueued_at, started_at, finished_at)
-                VALUES (?, 'match_unknown', 'pending', 100, 0, NULL, ?, NULL, NULL)
+                     last_error, started_at, finished_at)
+                VALUES (?, 'match_unknown', 'pending', 100, 0, NULL, NULL, NULL)
                 """,
-                (fid, now),
+                (fid,),
             )
-            enqueued += 1
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        log.exception("enqueue_all_unknown: insert failed")
-        return enqueued
+            if cur.rowcount:
+                enqueued += 1
+        except Exception:
+            log.exception("enqueue_all_unknown: insert failed file_id=%s", fid)
+    conn.commit()
 
-    log.info("enqueue_all_unknown: enqueued=%d", enqueued)
+    log.info("enqueue_all_unknown: enqueued=%d skipped=%d", enqueued, len(ids) - enqueued)
     return enqueued
 
 
@@ -209,29 +207,27 @@ def enqueue_seed_for_performer(conn: sqlite3.Connection, performer_id: int) -> i
         log.exception("enqueue_seed_for_performer: select failed performer_id=%s", performer_id)
         return 0
 
-    now = int(time.time())
     enqueued = 0
-    try:
-        for fid in ids:
+    for fid in ids:
+        try:
             cur.execute(
                 """
-                INSERT INTO face_recognition_job
+                INSERT OR IGNORE INTO face_recognition_job
                     (file_curation_id, job_type, status, priority, attempts,
-                     last_error, enqueued_at, started_at, finished_at)
-                VALUES (?, 'seed_known', 'pending', 10, 0, NULL, ?, NULL, NULL)
+                     last_error, started_at, finished_at)
+                VALUES (?, 'seed_known', 'pending', 10, 0, NULL, NULL, NULL)
                 """,
-                (fid, now),
+                (fid,),
             )
-            enqueued += 1
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        log.exception("enqueue_seed_for_performer: insert failed performer_id=%s", performer_id)
-        return enqueued
+            if cur.rowcount:
+                enqueued += 1
+        except Exception:
+            log.exception("enqueue_seed_for_performer: insert failed file_id=%s", fid)
+    conn.commit()
 
     log.info(
-        "enqueue_seed_for_performer: performer_id=%s enqueued=%d",
-        performer_id, enqueued,
+        "enqueue_seed_for_performer: performer_id=%s enqueued=%d skipped=%d",
+        performer_id, enqueued, len(ids) - enqueued,
     )
     return enqueued
 

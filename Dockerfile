@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 ARG APP_VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive \

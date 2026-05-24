@@ -29,7 +29,18 @@ def get_face_app():
                 root = os.environ.get("INSIGHTFACE_ROOT", "/data/.insightface")
                 os.makedirs(root, exist_ok=True)
 
+                import onnxruntime as _ort
+                _avail = _ort.get_available_providers()
+                _use_cuda = "CUDAExecutionProvider" in _avail
+                log.info(
+                    "onnxruntime providers available: %s — selecting %s",
+                    _avail,
+                    "CUDA" if _use_cuda else "CPU",
+                )
+
                 try:
+                    if not _use_cuda:
+                        raise RuntimeError("CUDAExecutionProvider not in available providers")
                     fa = FaceAnalysis(
                         name="buffalo_l",
                         root=root,
@@ -37,17 +48,21 @@ def get_face_app():
                     )
                     # det_size 640x640 keeps VRAM modest on the 4GB 3050 Ti.
                     fa.prepare(ctx_id=0, det_size=(640, 640))
+                    log.info("InsightFace buffalo_l loaded on NVIDIA CUDA (root=%s)", root)
                 except Exception:
-                    log.exception("Failed to load InsightFace buffalo_l on GPU; retrying on CPU")
+                    log.warning(
+                        "CUDA init failed — falling back to CPU inference. "
+                        "Check that cuDNN is installed and onnxruntime-gpu matches CUDA version."
+                    )
                     fa = FaceAnalysis(
                         name="buffalo_l",
                         root=root,
                         providers=["CPUExecutionProvider"],
                     )
                     fa.prepare(ctx_id=-1, det_size=(640, 640))
+                    log.info("InsightFace buffalo_l loaded on CPU (root=%s)", root)
 
                 _app = fa
-                log.info("InsightFace buffalo_l loaded (root=%s)", root)
     return _app
 
 
