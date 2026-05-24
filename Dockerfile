@@ -3,12 +3,14 @@ FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04
 ARG APP_VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    APP_VERSION=${APP_VERSION}
+    APP_VERSION=${APP_VERSION} \
+    INSIGHTFACE_ROOT=/data/.insightface
 
 RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg tzdata \
     libva-drm2 libva2 intel-media-va-driver \
     intel-gpu-tools \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

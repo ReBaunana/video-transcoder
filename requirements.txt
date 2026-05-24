@@ -4,3 +4,9 @@ starlette>=0.49.1,<0.51.0
 python-multipart>=0.0.26
 jinja2>=3.1.6,<3.2
 aiofiles~=25.1
+
+# Face recognition — optional; app runs without these but face features are disabled
+insightface>=0.7.3
+onnxruntime-gpu>=1.18.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0

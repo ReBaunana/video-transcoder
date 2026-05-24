@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sqlite3
 import subprocess
 import threading
 import time
@@ -9,15 +10,22 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.database import (
     init as db_init, backup as db_backup, reset_db, clean_jobs, clean_failed_jobs, BACKUP_DIR,
+    DB_PATH,
     get_stats, get_codec_stats, get_recent_jobs, get_mount_stats,
     get_corrupt_files, delete_corrupt_cache_entries, get_cache_mount_stats,
     prune_stale_cache, delete_cache_entry, reset_corrupt_cache,
 )
 from app import transcoder
+
+# Curation / performer routers — imported eagerly so route registration
+# happens at import time and shows up in the OpenAPI schema.
+from app.curation import routes as curation_routes
+from app.performers import routes as performer_routes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +42,18 @@ APP_VERSION = os.getenv('APP_VERSION') or (_ver_file.read_text().strip() if _ver
 
 last_backup_at: str | None = None
 last_prune_at:  str | None = None
+
+# Face-recognition thumbnails are served from /data/face_thumbs at /static/faces.
+# The directory must exist before StaticFiles is mounted, otherwise the mount
+# raises RuntimeError at startup.
+FACE_THUMB_DIR = Path('/data/face_thumbs')
+FACE_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+app.mount('/static/faces', StaticFiles(directory=str(FACE_THUMB_DIR)), name='faces')
+
+# Register the new routers. The curation/performer routes look up the shared
+# DB connection via request.app.state.db (set during startup below).
+app.include_router(curation_routes.router)
+app.include_router(performer_routes.router)
 
 
 @app.on_event('startup')
@@ -53,7 +73,56 @@ async def startup():
         if backups:
             mtime = backups[-1].stat().st_mtime
             last_backup_at = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+
+    # ── Curation schema + face worker wiring ─────────────────────────────
+    # database_curation.init_curation is idempotent — it ALTERs / CREATEs only
+    # what's missing, so safe to call on every boot.
+    log = logging.getLogger('startup')
+    try:
+        from app.database_curation import init_curation
+        init_curation(db)
+    except Exception as exc:
+        log.error(f'init_curation failed: {exc}')
+
+    # Make the shared DB connection available to APIRouters via app.state.
+    app.state.db = db
+
+    # Ensure the face-thumb directory exists (also covered above, but harmless
+    # to retry in case the volume was mounted late).
+    FACE_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from app.face.worker import start_worker
+        from app.face.model import is_face_rec_available
+        if is_face_rec_available():
+            db_path = DB_PATH
+
+            def _conn_factory():
+                conn = sqlite3.connect(str(db_path), check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                return conn
+
+            start_worker(_conn_factory)
+            log.info('Face worker started')
+        else:
+            log.info('InsightFace not available — face recognition disabled')
+    except ImportError as exc:
+        log.info(f'Face stack unavailable ({exc}) — face recognition disabled')
+    except Exception as exc:
+        log.error(f'Face worker startup failed: {exc}')
+
     _start_scheduler()
+
+
+@app.on_event('shutdown')
+async def shutdown():
+    """Stop background workers cleanly so the container shuts down quickly."""
+    log = logging.getLogger('shutdown')
+    try:
+        from app.face.worker import stop_worker
+        stop_worker()
+    except Exception as exc:
+        log.warning(f'stop_worker failed: {exc}')
 
 
 def _start_scheduler():

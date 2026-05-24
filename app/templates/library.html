@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Library · Video Transcoder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #080810;
+      --surface:      #0d0d1e;
+      --surface-2:    #12122a;
+      --surface-3:    #181838;
+      --border:       rgba(255,255,255,.055);
+      --border-hover: rgba(255,255,255,.11);
+      --text:         #dde0f0;
+      --text-muted:   #555878;
+      --text-dim:     #2e304a;
+      --accent:       #6c8ef5;
+      --accent-dim:   rgba(108,142,245,.18);
+      --accent-glow:  rgba(108,142,245,.3);
+      --accent-2:     #a78bfa;
+      --green:        #34d399;
+      --green-bg:     rgba(52,211,153,.09);
+      --red:          #f87171;
+      --red-bg:       rgba(248,113,113,.09);
+      --yellow:       #fbbf24;
+      --cyan:         #67e8f9;
+      --cyan-bg:      rgba(103,232,249,.09);
+      --radius:       .8rem;
+      --radius-sm:    .45rem;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:           #f0f1f8;
+        --surface:      #f7f8fc;
+        --surface-2:    #eceef8;
+        --surface-3:    #e2e4f0;
+        --border:       rgba(80,90,160,.10);
+        --border-hover: rgba(80,90,160,.20);
+        --text:         #1a1c30;
+        --text-muted:   #7880aa;
+        --text-dim:     #b4b9d4;
+        --accent:       #4a6ef0;
+        --accent-dim:   rgba(74,110,240,.12);
+        --accent-glow:  rgba(74,110,240,.20);
+        --accent-2:     #7c5cf4;
+        --green:        #0ea869;
+        --green-bg:     rgba(14,168,105,.08);
+        --red:          #dc3f3f;
+        --red-bg:       rgba(220,63,63,.07);
+        --yellow:       #c48a00;
+        --cyan:         #0891b2;
+        --cyan-bg:      rgba(8,145,178,.07);
+      }
+    }
+
+    [data-theme="light"] {
+      --bg:           #f0f1f8;
+      --surface:      #f7f8fc;
+      --surface-2:    #eceef8;
+      --surface-3:    #e2e4f0;
+      --border:       rgba(80,90,160,.10);
+      --border-hover: rgba(80,90,160,.20);
+      --text:         #1a1c30;
+      --text-muted:   #7880aa;
+      --text-dim:     #b4b9d4;
+      --accent:       #4a6ef0;
+      --accent-dim:   rgba(74,110,240,.12);
+      --accent-glow:  rgba(74,110,240,.20);
+      --accent-2:     #7c5cf4;
+      --green:        #0ea869;
+      --green-bg:     rgba(14,168,105,.08);
+      --red:          #dc3f3f;
+      --red-bg:       rgba(220,63,63,.07);
+      --yellow:       #c48a00;
+      --cyan:         #0891b2;
+      --cyan-bg:      rgba(8,145,178,.07);
+    }
+
+    [data-theme="dark"] {
+      --bg:           #080810;
+      --surface:      #0d0d1e;
+      --surface-2:    #12122a;
+      --surface-3:    #181838;
+      --border:       rgba(255,255,255,.055);
+      --border-hover: rgba(255,255,255,.11);
+      --text:         #dde0f0;
+      --text-muted:   #555878;
+      --text-dim:     #2e304a;
+      --accent:       #6c8ef5;
+      --accent-dim:   rgba(108,142,245,.18);
+      --accent-glow:  rgba(108,142,245,.3);
+      --accent-2:     #a78bfa;
+      --green:        #34d399;
+      --green-bg:     rgba(52,211,153,.09);
+      --red:          #f87171;
+      --red-bg:       rgba(248,113,113,.09);
+      --yellow:       #fbbf24;
+      --cyan:         #67e8f9;
+      --cyan-bg:      rgba(103,232,249,.09);
+    }
+
+    body, header, .card, .panel, .badge, .btn, th, tbody tr, .mount-card, .stat-card {
+      transition: background-color .22s ease, color .18s ease,
+                  border-color .18s ease, box-shadow .2s ease;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+
+    /* ─── Top bar (sticky) ────────────────────────────── */
+    #topBar { position: sticky; top: 0; z-index: 100; }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .7rem 1.75rem;
+      background: rgba(8,8,16,.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    [data-theme="light"] header { background: rgba(240,241,248,.88); }
+
+    .header-left { display: flex; align-items: center; gap: 1.2rem; min-width: 0; }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .875rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.015em;
+      white-space: nowrap;
+      flex-shrink: 0;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+      border-radius: .35rem;
+      flex-shrink: 0;
+    }
+
+    /* ─── Nav tabs ────────────────────────────── */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: .15rem;
+      padding: .2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .nav-tab {
+      padding: .35rem .85rem;
+      font-size: .73rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 99px;
+      text-decoration: none;
+      letter-spacing: .01em;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .header-actions { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .38rem;
+      padding: .42rem .85rem;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: .75rem;
+      letter-spacing: .01em;
+      transition: all .15s ease;
+      line-height: 1;
+      text-decoration: none;
+    }
+    .btn:hover { border-color: var(--border-hover); background: var(--surface-3); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .btn-run {
+      background: rgba(52,211,153,.1);
+      border-color: rgba(52,211,153,.22);
+      color: var(--green);
+    }
+    .btn-run:hover {
+      background: rgba(52,211,153,.18);
+      border-color: rgba(52,211,153,.4);
+      box-shadow: 0 0 14px rgba(52,211,153,.12);
+    }
+    .btn-stop {
+      background: rgba(248,113,113,.1);
+      border-color: rgba(248,113,113,.22);
+      color: var(--red);
+    }
+    .btn-stop:hover {
+      background: rgba(248,113,113,.18);
+      border-color: rgba(248,113,113,.4);
+      box-shadow: 0 0 14px rgba(248,113,113,.12);
+    }
+    .btn-accent {
+      background: var(--accent-dim);
+      border-color: rgba(108,142,245,.3);
+      color: var(--accent);
+    }
+    .btn-accent:hover {
+      background: rgba(108,142,245,.28);
+      border-color: rgba(108,142,245,.5);
+      box-shadow: 0 0 14px var(--accent-glow);
+    }
+    .btn-sm {
+      padding: .28rem .55rem;
+      font-size: .68rem;
+    }
+
+    /* ─── Layout ────────────────────────────── */
+    main {
+      padding: 1.4rem 1.75rem 4rem;
+      max-width: 1640px;
+      margin: 0 auto;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 1.1rem;
+      align-items: start;
+    }
+
+    /* ─── Mount sidebar ────────────────────────────── */
+    .mounts-sidebar {
+      position: sticky;
+      top: calc(0px + 3.2rem);
+      max-height: calc(100vh - 4rem);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+    }
+
+    .sidebar-title {
+      font-size: .66rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      padding: 0 .5rem .4rem;
+    }
+
+    .mount-card {
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+      padding: .7rem .85rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+    .mount-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 4px 18px rgba(0,0,0,.3);
+    }
+    .mount-card.active {
+      border-color: rgba(108,142,245,.42);
+      background: var(--accent-dim);
+      box-shadow: 0 0 14px var(--accent-glow);
+    }
+
+    .mount-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+    }
+
+    .mount-name {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mount-card.active .mount-name { color: var(--accent); }
+
+    .mount-total {
+      font-size: .68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mount-bars {
+      display: flex;
+      height: 4px;
+      background: var(--surface-3);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .mount-bar-renamed { background: var(--green); }
+    .mount-bar-approved { background: var(--accent); }
+    .mount-bar-pending { background: var(--yellow); }
+    .mount-bar-skipped { background: var(--text-dim); }
+
+    .mount-stats {
+      display: flex;
+      gap: .55rem;
+      font-size: .65rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .mount-stats .ms-renamed { color: var(--green); }
+    .mount-stats .ms-pending { color: var(--yellow); }
+    .mount-stats .ms-approved { color: var(--accent); }
+
+    /* ─── Stats row ────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: .65rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: .7rem 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(140deg, rgba(255,255,255,.03) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .stat-card-lbl {
+      font-size: .65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      margin-bottom: .35rem;
+    }
+    .stat-card-val {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -.04em;
+      line-height: 1;
+    }
+    .stat-card-val small {
+      font-size: .8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: .3rem;
+    }
+    .stat-card.c-blue .stat-card-val { color: var(--accent); }
+    .stat-card.c-green .stat-card-val { color: var(--green); }
+    .stat-card.c-yellow .stat-card-val { color: var(--yellow); }
+    .stat-card.c-cyan .stat-card-val { color: var(--cyan); }
+
+    /* ─── Action bar ────────────────────────────── */
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      flex-wrap: wrap;
+      padding: .7rem .85rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1rem;
+    }
+
+    .action-bar .sep {
+      width: 1px;
+      height: 22px;
+      background: var(--border);
+      margin: 0 .2rem;
+    }
+
+    .filter-pills {
+      display: flex;
+      align-items: center;
+      gap: .2rem;
+      padding: .2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .filter-pill {
+      padding: .3rem .75rem;
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 99px;
+      text-decoration: none;
+      letter-spacing: .01em;
+    }
+    .filter-pill:hover { color: var(--text); }
+    .filter-pill.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* ─── Panel ────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .8rem 1.15rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: .67rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    /* ─── File table ────────────────────────────── */
+    .tbl-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .77rem;
+    }
+
+    th {
+      text-align: left;
+      padding: .58rem 1rem;
+      font-size: .66rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    tbody tr:last-child { border: none; }
+    tbody tr:hover { background: var(--surface-2); }
+
+    tbody tr.row-approved { border-left: 3px solid var(--accent); }
+    tbody tr.row-renamed { background: rgba(52,211,153,.04); border-left: 3px solid var(--green); }
+    tbody tr.row-skipped { opacity: .55; }
+    tbody tr.row-selected { background: var(--accent-dim) !important; }
+
+    td {
+      padding: .55rem 1rem;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    .td-file {
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: .73rem;
+    }
+    .td-proposed {
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--accent);
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: .73rem;
+    }
+    .td-performers {
+      color: var(--text-muted);
+      font-size: .72rem;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .td-actions {
+      white-space: nowrap;
+      display: flex;
+      gap: .3rem;
+    }
+
+    /* ─── Confidence bar ────────────────────────────── */
+    .conf-wrap { display: flex; align-items: center; gap: .45rem; min-width: 100px; }
+    .conf-bar {
+      flex: 1;
+      height: 5px;
+      background: var(--surface-3);
+      border-radius: 99px;
+      overflow: hidden;
+      max-width: 70px;
+    }
+    .conf-fill { height: 100%; border-radius: 99px; }
+    .conf-fill.high { background: var(--green); }
+    .conf-fill.mid  { background: var(--yellow); }
+    .conf-fill.low  { background: var(--red); }
+    .conf-pct {
+      font-size: .68rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      min-width: 28px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Badges ────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .28rem;
+      padding: .18rem .55rem;
+      border-radius: 99px;
+      font-size: .65rem;
+      font-weight: 600;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .badge::before {
+      content: '';
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-pending::before { background: var(--text-muted); }
+    .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(108,142,245,.22); }
+    .badge-approved::before { background: var(--accent); }
+    .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.22); }
+    .badge-renamed::before { background: var(--green); }
+    .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
+    .badge-skipped::before { background: var(--text-dim); }
+
+    .face-link {
+      display: inline-block;
+      margin-top: .25rem;
+      padding: .12rem .45rem;
+      background: rgba(251,191,36,.1);
+      border: 1px solid rgba(251,191,36,.25);
+      border-radius: 99px;
+      font-size: .65rem;
+      font-weight: 600;
+      color: var(--yellow);
+      text-decoration: none;
+    }
+    .face-link:hover { background: rgba(251,191,36,.2); }
+
+    /* ─── Checkbox ────────────────────────────── */
+    input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* ─── Batch action bar ────────────────────────────── */
+    .batch-bar {
+      position: sticky;
+      bottom: 1rem;
+      display: none;
+      align-items: center;
+      gap: .65rem;
+      padding: .65rem 1rem;
+      background: var(--surface-2);
+      border: 1px solid rgba(108,142,245,.3);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      margin: 1rem 0;
+      z-index: 50;
+    }
+    .batch-bar.visible { display: flex; }
+    .batch-count {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    /* ─── Pagination ────────────────────────────── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .8rem 1.15rem;
+      border-top: 1px solid var(--border);
+    }
+    .page-info {
+      font-size: .73rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .page-links { display: flex; gap: .35rem; }
+
+    /* ─── Rename section ────────────────────────────── */
+    .rename-section { margin-top: 1.4rem; }
+
+    .rename-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .85rem 1.15rem;
+      background: var(--surface);
+      border: 1px solid rgba(52,211,153,.22);
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .rename-header.has-approved {
+      box-shadow: 0 0 18px rgba(52,211,153,.08);
+    }
+    .rename-header-left {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .rename-icon {
+      color: var(--green);
+    }
+    .rename-title-block {
+      display: flex;
+      flex-direction: column;
+      gap: .15rem;
+    }
+    .rename-title {
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .rename-sub {
+      font-size: .7rem;
+      color: var(--text-muted);
+    }
+
+    .rename-log {
+      display: none;
+      margin-top: .65rem;
+      padding: .85rem 1.15rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .rename-log.open { display: block; }
+    .rename-log-row {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .4rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .72rem;
+      font-family: 'SF Mono', Menlo, monospace;
+    }
+    .rename-log-row:last-child { border: none; }
+    .rename-log-row .arrow {
+      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+    }
+    .rename-log-row .from { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rename-log-row .to { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ─── Empty state ────────────────────────────── */
+    .empty {
+      padding: 4rem 1.5rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: .85rem;
+    }
+    .empty svg { display: block; margin: 0 auto .8rem; opacity: .5; }
+    .empty-title {
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: .3rem;
+    }
+
+    /* ─── Toast ────────────────────────────── */
+    #toastContainer {
+      position: fixed;
+      bottom: 1.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+      pointer-events: none;
+    }
+    .toast {
+      padding: .6rem 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: .75rem;
+      color: var(--text);
+      box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      pointer-events: auto;
+      animation: toast-in .25s ease;
+    }
+    .toast.ok { border-color: rgba(52,211,153,.4); color: var(--green); }
+    .toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Version badge ─────────────────────── */
+    .version-badge {
+      position: fixed;
+      bottom: 1.1rem;
+      right: 1.25rem;
+      z-index: 200;
+      padding: .3rem .7rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: .68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .version-badge:hover { border-color: var(--border-hover); color: var(--text); }
+
+    /* ─── Animations ────────────────────────────── */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(7px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
+      .mount-card { min-width: 220px; flex: 1 1 220px; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<div id="topBar">
+<header>
+  <div class="header-left">
+    <a href="/" class="logo">
+      <div class="logo-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+      </div>
+      <span>Video Transcoder</span>
+    </a>
+    <nav class="nav-tabs">
+      <a href="/" class="nav-tab">Transcoder</a>
+      <a href="/library" class="nav-tab active">Library</a>
+      <a href="/performers" class="nav-tab">Performers</a>
+    </nav>
+  </div>
+  <div class="header-actions">
+    {% if selected_mount %}
+    <button class="btn btn-accent" onclick="scanMount()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Scan mount
+    </button>
+    <button class="btn" onclick="enqueueFaceRec()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66c1.5-2.27 2.97-3.41 5-3.41s3.5 1.14 5 3.41"/>
+      </svg>
+      Face rec on unknowns
+    </button>
+    {% endif %}
+  </div>
+</header>
+</div>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════ -->
+<main>
+  <div class="layout">
+
+    <!-- ── Mount sidebar ──────────────────────────── -->
+    <aside class="mounts-sidebar">
+      <div class="sidebar-title">Mounts</div>
+      {% for m in mounts %}
+        {% set m_total = m.total or 1 %}
+        {% set pct_renamed = (m.renamed / m_total * 100) %}
+        {% set pct_approved = (m.approved / m_total * 100) %}
+        {% set pct_pending = (m.pending / m_total * 100) %}
+        {% set pct_skipped = (m.skipped / m_total * 100) %}
+        <a href="/library?mount={{ m.name }}" class="mount-card {{ 'active' if m.name == selected_mount else '' }}">
+          <div class="mount-card-head">
+            <span class="mount-name">{{ m.name }}</span>
+            <span class="mount-total">{{ m.total }}</span>
+          </div>
+          <div class="mount-bars">
+            <div class="mount-bar-renamed" style="width: {{ pct_renamed }}%"></div>
+            <div class="mount-bar-approved" style="width: {{ pct_approved }}%"></div>
+            <div class="mount-bar-pending" style="width: {{ pct_pending }}%"></div>
+            <div class="mount-bar-skipped" style="width: {{ pct_skipped }}%"></div>
+          </div>
+          <div class="mount-stats">
+            <span class="ms-renamed">{{ m.renamed }} renamed</span>
+            <span class="ms-pending">{{ m.pending }} pending</span>
+            {% if m.approved %}<span class="ms-approved">{{ m.approved }} ok</span>{% endif %}
+          </div>
+        </a>
+      {% else %}
+        <div class="empty" style="padding:1.5rem 1rem;font-size:.75rem">No mounts found.</div>
+      {% endfor %}
+    </aside>
+
+    <!-- ── Main content ──────────────────────────── -->
+    <section>
+      {% if not selected_mount %}
+        <div class="panel">
+          <div class="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <div class="empty-title">Select a mount</div>
+            <div>Choose a mount from the sidebar to review files and start renaming.</div>
+          </div>
+        </div>
+      {% else %}
+
+        {% set approved_count = files | selectattr('status','equalto','approved') | list | length %}
+
+        <!-- Stats row -->
+        {% set sel_mount = (mounts | selectattr('name','equalto',selected_mount) | first) %}
+        <div class="stats-row">
+          <div class="stat-card c-blue">
+            <div class="stat-card-lbl">Total files</div>
+            <div class="stat-card-val">{{ (sel_mount.total if sel_mount else total_files) }}</div>
+          </div>
+          <div class="stat-card c-green">
+            <div class="stat-card-lbl">Renamed</div>
+            <div class="stat-card-val">{{ sel_mount.renamed if sel_mount else 0 }}</div>
+          </div>
+          <div class="stat-card c-yellow">
+            <div class="stat-card-lbl">Pending review</div>
+            <div class="stat-card-val">{{ sel_mount.pending if sel_mount else 0 }}</div>
+          </div>
+          <div class="stat-card c-cyan">
+            <div class="stat-card-lbl">Face queue</div>
+            <div class="stat-card-val">
+              {{ (face_queue_status.queued or 0) + (face_queue_status.running or 0) }}
+              <small>q · {{ face_queue_status.done or 0 }} done{% if face_queue_status.failed %} · {{ face_queue_status.failed }} fail{% endif %}</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action bar -->
+        <div class="action-bar">
+          <nav class="filter-pills">
+            <a href="/library?mount={{ selected_mount }}" class="filter-pill {{ 'active' if not status_filter else '' }}">All</a>
+            <a href="/library?mount={{ selected_mount }}&status=pending"  class="filter-pill {{ 'active' if status_filter == 'pending' else '' }}">Pending</a>
+            <a href="/library?mount={{ selected_mount }}&status=approved" class="filter-pill {{ 'active' if status_filter == 'approved' else '' }}">Approved</a>
+            <a href="/library?mount={{ selected_mount }}&status=renamed"  class="filter-pill {{ 'active' if status_filter == 'renamed' else '' }}">Renamed</a>
+            <a href="/library?mount={{ selected_mount }}&status=skipped"  class="filter-pill {{ 'active' if status_filter == 'skipped' else '' }}">Skipped</a>
+          </nav>
+        </div>
+
+        <!-- File table -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Files — {{ selected_mount }}</div>
+            <div class="panel-title" style="text-transform:none;letter-spacing:0;font-weight:500">
+              {{ total_files }} total
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table id="filesTable">
+              <thead>
+                <tr>
+                  <th style="width:30px"><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
+                  <th>Filename</th>
+                  <th>Proposed name</th>
+                  <th>Performers</th>
+                  <th>Confidence</th>
+                  <th>Status</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for f in files %}
+                {% set conf = f.extraction_confidence or 0 %}
+                {% set conf_cls = 'high' if conf >= 0.85 else ('mid' if conf >= 0.60 else 'low') %}
+                <tr data-id="{{ f.id }}" class="row-{{ f.status }}">
+                  <td><input type="checkbox" class="row-cb" value="{{ f.id }}" onchange="updateBatchBar()"></td>
+                  <td class="td-file" title="{{ f.filename }}">
+                    {{ f.filename if f.filename|length <= 40 else f.filename[:37] ~ '…' }}
+                  </td>
+                  <td class="td-proposed" title="{{ f.proposed_filename or '' }}">
+                    {% if f.proposed_filename %}{{ f.proposed_filename }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+                  </td>
+                  <td class="td-performers">
+                    {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+                    {% if f.face_suggestions and f.face_suggestions > 0 %}
+                    <br><a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face suggestion{{ 's' if f.face_suggestions != 1 else '' }}</a>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="conf-wrap">
+                      <div class="conf-bar"><div class="conf-fill {{ conf_cls }}" style="width: {{ (conf * 100) | int }}%"></div></div>
+                      <span class="conf-pct">{{ (conf * 100) | int }}%</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
+                  <td class="td-actions" style="justify-content:flex-end">
+                    {% if f.status == 'pending' %}
+                    <button class="btn btn-sm btn-run" onclick="approveFile({{ f.id }})">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      Approve
+                    </button>
+                    <button class="btn btn-sm" onclick="skipFile({{ f.id }})">
+                      Skip
+                    </button>
+                    {% elif f.status == 'approved' %}
+                    <button class="btn btn-sm" onclick="skipFile({{ f.id }})">Unapprove</button>
+                    {% elif f.status == 'renamed' %}
+                    <span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>
+                    {% elif f.status == 'skipped' %}
+                    <button class="btn btn-sm" onclick="approveFile({{ f.id }})">Re-approve</button>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="7" class="empty" style="padding:3rem 1rem">No files match this filter. Run a mount scan to populate.</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          {% set total_pages = ((total_files / page_size) | round(0, 'ceil')) | int %}
+          {% if total_pages > 1 %}
+          <div class="pagination">
+            <div class="page-info">
+              Page {{ page }} of {{ total_pages }} · {{ total_files }} files
+            </div>
+            <div class="page-links">
+              {% set qs_status = ('&status=' ~ status_filter) if status_filter else '' %}
+              {% if page > 1 %}
+                <a href="/library?mount={{ selected_mount }}&page={{ page - 1 }}{{ qs_status }}" class="btn btn-sm">← Prev</a>
+              {% else %}
+                <button class="btn btn-sm" disabled>← Prev</button>
+              {% endif %}
+              {% if page < total_pages %}
+                <a href="/library?mount={{ selected_mount }}&page={{ page + 1 }}{{ qs_status }}" class="btn btn-sm">Next →</a>
+              {% else %}
+                <button class="btn btn-sm" disabled>Next →</button>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Batch action bar -->
+        <div class="batch-bar" id="batchBar">
+          <span class="batch-count" id="batchCount">0 selected</span>
+          <button class="btn btn-run" onclick="batchApprove()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Approve selected
+          </button>
+          <button class="btn" onclick="batchSkip()">Skip selected</button>
+          <button class="btn btn-sm" onclick="clearSelection()" style="margin-left:auto">Clear</button>
+        </div>
+
+        <!-- Rename execute section -->
+        {% if approved_count > 0 or rename_log is defined %}
+        <div class="rename-section">
+          <div class="rename-header {{ 'has-approved' if approved_count > 0 else '' }}" onclick="toggleRenameLog()">
+            <div class="rename-header-left">
+              <div class="rename-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="9" y1="13" x2="15" y2="13"/>
+                </svg>
+              </div>
+              <div class="rename-title-block">
+                <div class="rename-title">Execute rename for {{ approved_count }} approved file{{ 's' if approved_count != 1 else '' }}</div>
+                <div class="rename-sub">Click to view recent rename log · this operation cannot be undone</div>
+              </div>
+            </div>
+            <button class="btn btn-run" onclick="event.stopPropagation(); executeRename({{ approved_count }})" {{ 'disabled' if approved_count == 0 else '' }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run rename
+            </button>
+          </div>
+          <div class="rename-log" id="renameLog">
+            {% if rename_log is defined and rename_log %}
+              {% for entry in rename_log[:10] %}
+              <div class="rename-log-row">
+                <span class="from" title="{{ entry.from }}">{{ entry.from }}</span>
+                <span class="arrow">→</span>
+                <span class="to" title="{{ entry.to }}">{{ entry.to }}</span>
+                <span class="badge badge-{{ 'renamed' if entry.ok else 'pending' }}" style="text-transform:none">{{ 'ok' if entry.ok else 'fail' }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <div style="color:var(--text-dim); font-size:.75rem; text-align:center; padding:1rem">No rename activity yet.</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+      {% endif %}
+    </section>
+  </div>
+</main>
+
+<div id="toastContainer"></div>
+
+<a class="version-badge" href="https://github.com/ReBaunana/video-transcoder/releases" target="_blank" rel="noopener">
+  v{{ version }}
+</a>
+
+<script>
+  /* ── Toast ─────────────────────────────────────────────── */
+  function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (type || '');
+    el.textContent = msg;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 2600);
+  }
+
+  async function apiPost(url, body) {
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('application/json') ? r.json() : r.text();
+  }
+
+  /* ── Selection ─────────────────────────────────────────── */
+  function toggleAll(masterCb) {
+    document.querySelectorAll('.row-cb').forEach(cb => {
+      cb.checked = masterCb.checked;
+      cb.closest('tr').classList.toggle('row-selected', cb.checked);
+    });
+    updateBatchBar();
+  }
+
+  function updateBatchBar() {
+    const checked = document.querySelectorAll('.row-cb:checked');
+    const bar = document.getElementById('batchBar');
+    const cnt = document.getElementById('batchCount');
+    document.querySelectorAll('.row-cb').forEach(cb => {
+      cb.closest('tr').classList.toggle('row-selected', cb.checked);
+    });
+    if (checked.length > 0) {
+      bar.classList.add('visible');
+      cnt.textContent = checked.length + ' selected';
+    } else {
+      bar.classList.remove('visible');
+    }
+    const all = document.querySelectorAll('.row-cb');
+    const master = document.getElementById('selectAll');
+    if (master) master.checked = all.length > 0 && checked.length === all.length;
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = false; cb.closest('tr').classList.remove('row-selected'); });
+    document.getElementById('selectAll').checked = false;
+    updateBatchBar();
+  }
+
+  function selectedIds() {
+    return Array.from(document.querySelectorAll('.row-cb:checked')).map(cb => parseInt(cb.value, 10));
+  }
+
+  /* ── Single-file actions ──────────────────────────────── */
+  async function approveFile(id) {
+    try {
+      await apiPost(`/library/files/${id}/approve`);
+      updateRowStatus(id, 'approved');
+      toast('Approved', 'ok');
+    } catch (e) { toast('Approve failed: ' + e.message, 'err'); }
+  }
+
+  async function skipFile(id) {
+    try {
+      await apiPost(`/library/files/${id}/skip`);
+      updateRowStatus(id, 'skipped');
+      toast('Skipped', 'ok');
+    } catch (e) { toast('Skip failed: ' + e.message, 'err'); }
+  }
+
+  function updateRowStatus(id, status) {
+    const tr = document.querySelector(`tr[data-id="${id}"]`);
+    if (!tr) return;
+    tr.classList.remove('row-pending','row-approved','row-renamed','row-skipped');
+    tr.classList.add('row-' + status);
+    const badge = tr.querySelector('.badge');
+    if (badge) {
+      badge.className = 'badge badge-' + status;
+      badge.textContent = status;
+    }
+    const actions = tr.querySelector('.td-actions');
+    if (actions) {
+      if (status === 'approved') {
+        actions.innerHTML = `<button class="btn btn-sm" onclick="skipFile(${id})">Unapprove</button>`;
+      } else if (status === 'skipped') {
+        actions.innerHTML = `<button class="btn btn-sm" onclick="approveFile(${id})">Re-approve</button>`;
+      } else if (status === 'renamed') {
+        actions.innerHTML = `<span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>`;
+      }
+    }
+  }
+
+  /* ── Batch actions ─────────────────────────────────────── */
+  async function batchApprove() {
+    const ids = selectedIds();
+    if (!ids.length) return;
+    try {
+      await apiPost('/library/batch/approve', { ids });
+      ids.forEach(id => updateRowStatus(id, 'approved'));
+      clearSelection();
+      toast(`Approved ${ids.length} files`, 'ok');
+    } catch (e) { toast('Batch approve failed: ' + e.message, 'err'); }
+  }
+
+  async function batchSkip() {
+    const ids = selectedIds();
+    if (!ids.length) return;
+    try {
+      await apiPost('/library/batch/skip', { ids });
+      ids.forEach(id => updateRowStatus(id, 'skipped'));
+      clearSelection();
+      toast(`Skipped ${ids.length} files`, 'ok');
+    } catch (e) { toast('Batch skip failed: ' + e.message, 'err'); }
+  }
+
+  /* ── Mount-level actions ─────────────────────────────── */
+  async function scanMount() {
+    const mount = new URLSearchParams(location.search).get('mount');
+    if (!mount) return;
+    try {
+      await apiPost('/library/scan', { mount });
+      toast('Scan started for ' + mount, 'ok');
+    } catch (e) { toast('Scan failed: ' + e.message, 'err'); }
+  }
+
+  async function enqueueFaceRec() {
+    const mount = new URLSearchParams(location.search).get('mount');
+    try {
+      await apiPost('/library/face/enqueue-all', { mount });
+      toast('Face recognition queued', 'ok');
+    } catch (e) { toast('Failed: ' + e.message, 'err'); }
+  }
+
+  /* ── Rename execution ───────────────────────────────── */
+  function toggleRenameLog() {
+    document.getElementById('renameLog').classList.toggle('open');
+  }
+
+  async function executeRename(count) {
+    if (!confirm(`Rename ${count} files? This cannot be undone.`)) return;
+    try {
+      await apiPost('/library/rename/run');
+      toast('Rename started', 'ok');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) { toast('Rename failed: ' + e.message, 'err'); }
+  }
+</script>
+
+</body>
+</html>

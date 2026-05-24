@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Performers · Video Transcoder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #080810;
+      --surface:      #0d0d1e;
+      --surface-2:    #12122a;
+      --surface-3:    #181838;
+      --border:       rgba(255,255,255,.055);
+      --border-hover: rgba(255,255,255,.11);
+      --text:         #dde0f0;
+      --text-muted:   #555878;
+      --text-dim:     #2e304a;
+      --accent:       #6c8ef5;
+      --accent-dim:   rgba(108,142,245,.18);
+      --accent-glow:  rgba(108,142,245,.3);
+      --accent-2:     #a78bfa;
+      --green:        #34d399;
+      --green-bg:     rgba(52,211,153,.09);
+      --red:          #f87171;
+      --red-bg:       rgba(248,113,113,.09);
+      --yellow:       #fbbf24;
+      --cyan:         #67e8f9;
+      --cyan-bg:      rgba(103,232,249,.09);
+      --radius:       .8rem;
+      --radius-sm:    .45rem;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:           #f0f1f8;
+        --surface:      #f7f8fc;
+        --surface-2:    #eceef8;
+        --surface-3:    #e2e4f0;
+        --border:       rgba(80,90,160,.10);
+        --border-hover: rgba(80,90,160,.20);
+        --text:         #1a1c30;
+        --text-muted:   #7880aa;
+        --text-dim:     #b4b9d4;
+        --accent:       #4a6ef0;
+        --accent-dim:   rgba(74,110,240,.12);
+        --accent-glow:  rgba(74,110,240,.20);
+        --accent-2:     #7c5cf4;
+        --green:        #0ea869;
+        --green-bg:     rgba(14,168,105,.08);
+        --red:          #dc3f3f;
+        --red-bg:       rgba(220,63,63,.07);
+        --yellow:       #c48a00;
+        --cyan:         #0891b2;
+        --cyan-bg:      rgba(8,145,178,.07);
+      }
+    }
+
+    [data-theme="light"] {
+      --bg:           #f0f1f8;
+      --surface:      #f7f8fc;
+      --surface-2:    #eceef8;
+      --surface-3:    #e2e4f0;
+      --border:       rgba(80,90,160,.10);
+      --border-hover: rgba(80,90,160,.20);
+      --text:         #1a1c30;
+      --text-muted:   #7880aa;
+      --text-dim:     #b4b9d4;
+      --accent:       #4a6ef0;
+      --accent-dim:   rgba(74,110,240,.12);
+      --accent-glow:  rgba(74,110,240,.20);
+      --accent-2:     #7c5cf4;
+      --green:        #0ea869;
+      --green-bg:     rgba(14,168,105,.08);
+      --red:          #dc3f3f;
+      --red-bg:       rgba(220,63,63,.07);
+      --yellow:       #c48a00;
+      --cyan:         #0891b2;
+      --cyan-bg:      rgba(8,145,178,.07);
+    }
+
+    [data-theme="dark"] {
+      --bg:           #080810;
+      --surface:      #0d0d1e;
+      --surface-2:    #12122a;
+      --surface-3:    #181838;
+      --border:       rgba(255,255,255,.055);
+      --border-hover: rgba(255,255,255,.11);
+      --text:         #dde0f0;
+      --text-muted:   #555878;
+      --text-dim:     #2e304a;
+      --accent:       #6c8ef5;
+      --accent-dim:   rgba(108,142,245,.18);
+      --accent-glow:  rgba(108,142,245,.3);
+      --accent-2:     #a78bfa;
+      --green:        #34d399;
+      --green-bg:     rgba(52,211,153,.09);
+      --red:          #f87171;
+      --red-bg:       rgba(248,113,113,.09);
+      --yellow:       #fbbf24;
+      --cyan:         #67e8f9;
+      --cyan-bg:      rgba(103,232,249,.09);
+    }
+
+    body, header, .card, .panel, .badge, .btn, .perf-card, .video-card {
+      transition: background-color .22s ease, color .18s ease,
+                  border-color .18s ease, box-shadow .2s ease;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+
+    /* ─── Top bar (sticky) ────────────────────────────── */
+    #topBar { position: sticky; top: 0; z-index: 100; }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .7rem 1.75rem;
+      background: rgba(8,8,16,.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    [data-theme="light"] header { background: rgba(240,241,248,.88); }
+
+    .header-left { display: flex; align-items: center; gap: 1.2rem; min-width: 0; }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .875rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.015em;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+      border-radius: .35rem;
+      flex-shrink: 0;
+    }
+
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: .15rem;
+      padding: .2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .nav-tab {
+      padding: .35rem .85rem;
+      font-size: .73rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 99px;
+      text-decoration: none;
+      letter-spacing: .01em;
+      transition: color .15s, background .15s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { background: var(--accent-dim); color: var(--accent); }
+
+    .header-actions { display: flex; align-items: center; gap: .45rem; }
+
+    .header-count {
+      font-size: .72rem;
+      color: var(--text-muted);
+      padding: .3rem .6rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .header-count strong { color: var(--text); font-weight: 700; }
+
+    /* ─── Buttons ────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .38rem;
+      padding: .42rem .85rem;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: .75rem;
+      letter-spacing: .01em;
+      transition: all .15s ease;
+      line-height: 1;
+      text-decoration: none;
+    }
+    .btn:hover { border-color: var(--border-hover); background: var(--surface-3); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-run {
+      background: rgba(52,211,153,.1);
+      border-color: rgba(52,211,153,.22);
+      color: var(--green);
+    }
+    .btn-run:hover {
+      background: rgba(52,211,153,.18);
+      border-color: rgba(52,211,153,.4);
+      box-shadow: 0 0 14px rgba(52,211,153,.12);
+    }
+    .btn-stop {
+      background: rgba(248,113,113,.1);
+      border-color: rgba(248,113,113,.22);
+      color: var(--red);
+    }
+    .btn-stop:hover {
+      background: rgba(248,113,113,.18);
+      border-color: rgba(248,113,113,.4);
+    }
+    .btn-accent {
+      background: var(--accent-dim);
+      border-color: rgba(108,142,245,.3);
+      color: var(--accent);
+    }
+    .btn-accent:hover {
+      background: rgba(108,142,245,.28);
+      border-color: rgba(108,142,245,.5);
+      box-shadow: 0 0 14px var(--accent-glow);
+    }
+    .btn-sm { padding: .28rem .6rem; font-size: .68rem; }
+    .btn-icon {
+      padding: .35rem;
+      width: 28px; height: 28px;
+      justify-content: center;
+    }
+
+    /* ─── Layout ────────────────────────────── */
+    main {
+      padding: 1.4rem 1.75rem 4rem;
+      max-width: 1640px;
+      margin: 0 auto;
+    }
+
+    /* ─── Search bar ────────────────────────────── */
+    .search-row {
+      display: flex;
+      gap: .65rem;
+      align-items: center;
+      margin-bottom: 1.2rem;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 480px;
+    }
+    .search-input {
+      width: 100%;
+      padding: .55rem .9rem .55rem 2.2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .82rem;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .search-icon {
+      position: absolute;
+      left: .75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .view-tabs {
+      display: flex;
+      gap: .2rem;
+      padding: .2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+    }
+    .view-tab {
+      padding: .3rem .75rem;
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 99px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+    }
+    .view-tab.active { background: var(--accent-dim); color: var(--accent); }
+
+    /* ─── Performer grid ────────────────────────────── */
+    .perf-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: .85rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .perf-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem .8rem .9rem;
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      animation: fade-up .32s ease both;
+    }
+    .perf-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(140deg, rgba(255,255,255,.03) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .perf-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 8px 28px rgba(0,0,0,.4);
+      transform: translateY(-2px);
+    }
+    .perf-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 18px var(--accent-glow);
+    }
+
+    .perf-thumb-wrap {
+      position: relative;
+      width: 130px;
+      height: 130px;
+      margin: 0 auto .7rem;
+    }
+    .perf-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      background: var(--surface-3);
+      border: 2px solid var(--border);
+      transition: border-color .15s;
+    }
+    .perf-card:hover .perf-thumb { border-color: var(--accent); }
+
+    .perf-thumb-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--surface-3);
+      border: 2px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .perf-edit-btn {
+      position: absolute;
+      bottom: 4px;
+      right: 4px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .perf-card:hover .perf-edit-btn { display: flex; }
+    .perf-edit-btn:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+    .ready-dot {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      border: 2px solid var(--surface);
+    }
+
+    .perf-name {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.01em;
+      margin-bottom: .35rem;
+      outline: none;
+      word-break: break-word;
+    }
+    .perf-name[contenteditable="true"] {
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      padding: .15rem .35rem;
+    }
+
+    .perf-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .35rem;
+    }
+
+    .perf-video-count {
+      font-size: .68rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .source-pills {
+      display: flex;
+      gap: .25rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .source-pill {
+      padding: .12rem .45rem;
+      border-radius: 99px;
+      font-size: .6rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .source-pill.src-filename { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(108,142,245,.22); }
+    .source-pill.src-face_recognition { background: rgba(167,139,250,.12); color: var(--accent-2); border: 1px solid rgba(167,139,250,.25); }
+    .source-pill.src-manual { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
+
+    /* ─── Pagination ────────────────────────────── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0;
+    }
+    .page-info {
+      font-size: .73rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── Performer detail panel ────────────────────────────── */
+    .detail-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.5rem;
+      margin-bottom: 1.5rem;
+      animation: fade-up .32s ease both;
+      position: relative;
+    }
+
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      margin-bottom: 1.1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-thumb {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--surface-3);
+      object-fit: cover;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .detail-info { flex: 1; min-width: 0; }
+
+    .detail-name {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      color: var(--text);
+      margin-bottom: .25rem;
+      outline: none;
+    }
+    .detail-name[contenteditable="true"] {
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      padding: .15rem .55rem;
+    }
+    .detail-sub {
+      font-size: .77rem;
+      color: var(--text-muted);
+    }
+
+    .detail-actions { display: flex; gap: .45rem; flex-shrink: 0; }
+
+    .detail-close {
+      position: absolute;
+      top: .85rem;
+      right: .9rem;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .detail-close:hover { background: var(--surface-3); color: var(--text); }
+
+    /* ─── Detail toolbar (upload + scan) ────────────────────────────── */
+    .detail-toolbar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .upload-zone {
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .upload-zone svg { color: var(--text-muted); margin-bottom: .35rem; }
+    .upload-zone-text {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: .15rem;
+    }
+    .upload-zone-sub {
+      font-size: .68rem;
+      color: var(--text-muted);
+    }
+    .upload-preview {
+      max-width: 64px;
+      max-height: 64px;
+      border-radius: 8px;
+      margin-bottom: .35rem;
+    }
+
+    .merge-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+      padding: 1.2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .merge-label {
+      font-size: .65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+    .merge-row { display: flex; gap: .5rem; }
+    .merge-row select {
+      flex: 1;
+      padding: .45rem .7rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .78rem;
+      cursor: pointer;
+    }
+    .merge-row select option { background: var(--surface); }
+
+    /* ─── Video grid in detail ────────────────────────────── */
+    .detail-section-title {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      margin-bottom: .8rem;
+    }
+    .detail-section-title .count-tag {
+      padding: .12rem .5rem;
+      background: var(--surface-3);
+      border-radius: 99px;
+      font-size: .65rem;
+      color: var(--text);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: .75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .video-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .video-card:hover { border-color: var(--border-hover); }
+    .video-card.confirmed { border-color: rgba(52,211,153,.4); box-shadow: 0 0 14px rgba(52,211,153,.08); }
+    .video-card.rejected { opacity: .45; }
+
+    .video-thumb {
+      aspect-ratio: 16 / 9;
+      background: linear-gradient(135deg, var(--surface-3), var(--surface));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      position: relative;
+      overflow: hidden;
+    }
+    .video-thumb img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .video-thumb .mount-badge {
+      position: absolute;
+      top: .35rem;
+      left: .35rem;
+      padding: .12rem .45rem;
+      background: rgba(0,0,0,.55);
+      border-radius: 99px;
+      font-size: .6rem;
+      color: #fff;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .video-thumb .conf-tag {
+      position: absolute;
+      top: .35rem;
+      right: .35rem;
+      padding: .12rem .45rem;
+      background: rgba(0,0,0,.55);
+      border-radius: 99px;
+      font-size: .6rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .conf-tag.high { color: var(--green); }
+    .conf-tag.mid  { color: var(--yellow); }
+    .conf-tag.low  { color: var(--red); }
+
+    .video-body {
+      padding: .55rem .7rem .7rem;
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+    }
+    .video-filename {
+      font-size: .73rem;
+      color: var(--text);
+      font-weight: 500;
+      font-family: 'SF Mono', Menlo, monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .video-actions {
+      display: flex;
+      gap: .3rem;
+      align-items: center;
+    }
+    .vote-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .15s;
+    }
+    .vote-btn.confirm:hover {
+      border-color: rgba(52,211,153,.5);
+      background: var(--green-bg);
+      color: var(--green);
+    }
+    .vote-btn.reject:hover {
+      border-color: rgba(248,113,113,.5);
+      background: var(--red-bg);
+      color: var(--red);
+    }
+    .vote-btn.active.confirm { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+    .vote-btn.active.reject  { border-color: var(--red);   background: var(--red-bg);   color: var(--red); }
+
+    /* ─── Badges ────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .28rem;
+      padding: .14rem .5rem;
+      border-radius: 99px;
+      font-size: .63rem;
+      font-weight: 600;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(108,142,245,.22); }
+    .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.22); }
+    .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ─── Unknown faces ────────────────────────────── */
+    .unknown-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      margin-top: 1rem;
+    }
+    .unknown-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: .65rem;
+    }
+    .unknown-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .55rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .unknown-card:hover { border-color: var(--accent); }
+    .unknown-face {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--surface-3);
+      margin-bottom: .5rem;
+    }
+    .unknown-source {
+      font-size: .66rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: .45rem;
+    }
+    .unknown-card select {
+      width: 100%;
+      padding: .25rem .4rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: .65rem;
+      cursor: pointer;
+    }
+
+    /* ─── Empty state ────────────────────────────── */
+    .empty {
+      padding: 3.5rem 1.5rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: .85rem;
+    }
+    .empty-title {
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: .3rem;
+    }
+
+    /* ─── Toast ────────────────────────────── */
+    #toastContainer {
+      position: fixed;
+      bottom: 1.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+      pointer-events: none;
+    }
+    .toast {
+      padding: .6rem 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: .75rem;
+      color: var(--text);
+      box-shadow: 0 8px 28px rgba(0,0,0,.5);
+      pointer-events: auto;
+      animation: toast-in .25s ease;
+    }
+    .toast.ok { border-color: rgba(52,211,153,.4); color: var(--green); }
+    .toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Version badge ─────────────────────── */
+    .version-badge {
+      position: fixed;
+      bottom: 1.1rem;
+      right: 1.25rem;
+      z-index: 200;
+      padding: .3rem .7rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: .68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .version-badge:hover { border-color: var(--border-hover); color: var(--text); }
+
+    /* ─── Animations ────────────────────────────── */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(7px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .perf-card.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<div id="topBar">
+<header>
+  <div class="header-left">
+    <a href="/" class="logo">
+      <div class="logo-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+      </div>
+      <span>Video Transcoder</span>
+    </a>
+    <nav class="nav-tabs">
+      <a href="/" class="nav-tab">Transcoder</a>
+      <a href="/library" class="nav-tab">Library</a>
+      <a href="/performers" class="nav-tab active">Performers</a>
+    </nav>
+  </div>
+  <div class="header-actions">
+    <span class="header-count"><strong>{{ total }}</strong> performers</span>
+  </div>
+</header>
+</div>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════ -->
+<main>
+
+  <!-- Search row -->
+  <div class="search-row">
+    <div class="search-wrap">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" class="search-input" id="searchInput"
+             placeholder="Search performers..." value="{{ search or '' }}"
+             autocomplete="off">
+    </div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="all" onclick="setView(this, 'all')">All</button>
+      <button class="view-tab" data-view="ready" onclick="setView(this, 'ready')">Ready</button>
+      <button class="view-tab" data-view="unverified" onclick="setView(this, 'unverified')">Unverified</button>
+    </div>
+  </div>
+
+  <!-- ── Performer detail (when selected) ────────────────── -->
+  {% if selected_performer %}
+  <section class="detail-panel" id="detailPanel">
+    <button class="detail-close" onclick="closeDetail()" title="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+
+    <div class="detail-header">
+      {% if selected_performer.profile_thumb %}
+        <img class="detail-thumb" src="{{ selected_performer.profile_thumb }}" alt="{{ selected_performer.canonical_name }}">
+      {% else %}
+        <div class="detail-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-dim)">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+        </div>
+      {% endif %}
+      <div class="detail-info">
+        <div class="detail-name" id="detailName"
+             ondblclick="editPerformerName(this, {{ selected_performer.id }})">
+          {{ selected_performer.canonical_name }}
+        </div>
+        <div class="detail-sub">
+          {{ selected_performer.video_count }} video{{ 's' if selected_performer.video_count != 1 else '' }} ·
+          {{ selected_performer.embedding_count }} embedding{{ 's' if selected_performer.embedding_count != 1 else '' }} ·
+          slug: <code style="color:var(--text)">{{ selected_performer.slug }}</code>
+        </div>
+      </div>
+      <div class="detail-actions">
+        <button class="btn btn-icon" onclick="editPerformerName(document.getElementById('detailName'), {{ selected_performer.id }})" title="Edit name">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn btn-accent" onclick="runFaceScan({{ selected_performer.id }})">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Run face scan
+        </button>
+        <button class="btn btn-run" onclick="renameAllConfirmed({{ selected_performer.id }})">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Rename all confirmed
+        </button>
+      </div>
+    </div>
+
+    <!-- Upload + merge -->
+    <div class="detail-toolbar">
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(this, {{ selected_performer.id }})">
+        <img id="uploadPreview" class="upload-preview" style="display:none">
+        <svg id="uploadIcon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="upload-zone-text">Upload reference photo</div>
+        <div class="upload-zone-sub">Drag & drop or click — used to seed face recognition</div>
+      </div>
+
+      <div class="merge-wrap">
+        <div class="merge-label">Merge with another performer</div>
+        <div class="merge-row">
+          <select id="mergeTarget">
+            <option value="">— select performer —</option>
+            {% for p in performers %}
+              {% if p.id != selected_performer.id %}
+              <option value="{{ p.id }}">{{ p.canonical_name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          <button class="btn btn-stop" onclick="mergePerformer({{ selected_performer.id }})">Merge</button>
+        </div>
+        <div style="font-size:.66rem;color:var(--text-muted)">
+          The target performer absorbs all videos and embeddings from {{ selected_performer.canonical_name }}.
+        </div>
+      </div>
+    </div>
+
+    <!-- Videos -->
+    <div class="detail-section-title">
+      Videos
+      <span class="count-tag">{{ performer_videos | length }}</span>
+    </div>
+    {% if performer_videos %}
+    <div class="video-grid">
+      {% for v in performer_videos %}
+        {% set conf = v.confidence or 0 %}
+        {% set conf_cls = 'high' if conf >= 0.85 else ('mid' if conf >= 0.60 else 'low') %}
+        <div class="video-card" data-vid="{{ v.id }}">
+          <div class="video-thumb">
+            {% if v.thumbnail %}
+              <img src="{{ v.thumbnail }}" alt="thumbnail">
+            {% else %}
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            {% endif %}
+            {% if v.mount %}<span class="mount-badge">{{ v.mount }}</span>{% endif %}
+            <span class="conf-tag {{ conf_cls }}">{{ (conf * 100) | int }}%</span>
+          </div>
+          <div class="video-body">
+            <div class="video-filename" title="{{ v.filename }}">{{ v.filename }}</div>
+            <div class="video-actions">
+              <button class="vote-btn confirm" onclick="confirmVideo({{ selected_performer.id }}, {{ v.id }}, this)" title="Confirm performer is in this video">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button class="vote-btn reject" onclick="rejectVideo({{ selected_performer.id }}, {{ v.id }}, this)" title="Reject — performer is NOT in this video">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <span class="badge badge-{{ v.status or 'pending' }}" style="margin-left:auto">{{ v.status or 'pending' }}</span>
+              <button class="btn btn-sm" onclick="renameVideo({{ v.id }})" title="Approve & rename" style="padding:.18rem .4rem">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:1.8rem">No videos linked yet.</div>
+    {% endif %}
+
+    <!-- Face match suggestions -->
+    {% if face_matches %}
+    <div class="detail-section-title">
+      Unverified suggestions
+      <span class="count-tag">{{ face_matches | length }}</span>
+    </div>
+    <div class="video-grid">
+      {% for v in face_matches %}
+        {% set conf = v.confidence or 0 %}
+        {% set conf_cls = 'high' if conf >= 0.85 else ('mid' if conf >= 0.60 else 'low') %}
+        <div class="video-card" data-vid="{{ v.id }}">
+          <div class="video-thumb">
+            {% if v.thumbnail %}<img src="{{ v.thumbnail }}" alt="thumbnail">{% else %}
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+            {% endif %}
+            {% if v.mount %}<span class="mount-badge">{{ v.mount }}</span>{% endif %}
+            <span class="conf-tag {{ conf_cls }}">{{ (conf * 100) | int }}%</span>
+          </div>
+          <div class="video-body">
+            <div class="video-filename" title="{{ v.filename }}">{{ v.filename }}</div>
+            <div class="video-actions">
+              <button class="vote-btn confirm" onclick="confirmVideo({{ selected_performer.id }}, {{ v.id }}, this)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button class="vote-btn reject" onclick="rejectVideo({{ selected_performer.id }}, {{ v.id }}, this)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <!-- ── Performer grid ────────────────────────────── -->
+  {% if performers %}
+  <div class="perf-grid" id="perfGrid">
+    {% for p in performers %}
+    <a class="perf-card {{ 'active' if selected_performer and p.id == selected_performer.id else '' }}"
+       href="/performers?id={{ p.id }}"
+       data-name="{{ p.canonical_name | lower }}"
+       data-ready="{{ '1' if p.is_reference_ready else '0' }}">
+      <div class="perf-thumb-wrap">
+        {% if p.profile_thumb %}
+          <img class="perf-thumb" src="{{ p.profile_thumb }}" alt="{{ p.canonical_name }}">
+        {% else %}
+          <div class="perf-thumb-placeholder">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+            </svg>
+          </div>
+        {% endif %}
+        {% if p.is_reference_ready %}<div class="ready-dot" title="Reference photo ready"></div>{% endif %}
+        <button class="perf-edit-btn" onclick="event.preventDefault(); event.stopPropagation(); editPerformerName(this.parentElement.parentElement.querySelector('.perf-name'), {{ p.id }})" title="Edit">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
+      <div class="perf-name"
+           data-id="{{ p.id }}"
+           ondblclick="event.preventDefault(); editPerformerName(this, {{ p.id }})">
+        {{ p.canonical_name }}
+      </div>
+      <div class="perf-meta">
+        <div class="perf-video-count">{{ p.video_count }} video{{ 's' if p.video_count != 1 else '' }}</div>
+        <div class="source-pills">
+          {% for src in (p.sources or []) %}
+          <span class="source-pill src-{{ src }}">
+            {% if src == 'filename' %}Filename
+            {% elif src == 'face_recognition' %}Face Rec
+            {% else %}{{ src | capitalize }}{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  {% set total_pages = ((total / page_size) | round(0, 'ceil')) | int %}
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    <div class="page-info">
+      Page {{ page }} of {{ total_pages }} · {{ total }} performers
+    </div>
+    <div style="display:flex;gap:.35rem">
+      {% set qs = ('&search=' ~ search) if search else '' %}
+      {% if page > 1 %}
+        <a href="/performers?page={{ page - 1 }}{{ qs }}" class="btn btn-sm">← Prev</a>
+      {% else %}<button class="btn btn-sm" disabled>← Prev</button>{% endif %}
+      {% if page < total_pages %}
+        <a href="/performers?page={{ page + 1 }}{{ qs }}" class="btn btn-sm">Next →</a>
+      {% else %}<button class="btn btn-sm" disabled>Next →</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)" class="empty">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:.8rem;opacity:.5">
+      <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+    </svg>
+    <div class="empty-title">No performers yet</div>
+    <div>Scan a mount and run face recognition to populate this list.</div>
+  </div>
+  {% endif %}
+
+  <!-- Unknown faces section -->
+  {% if unknown_faces is defined and unknown_faces %}
+  <div class="unknown-section">
+    <div class="detail-section-title" style="margin-bottom:1rem">
+      Unidentified faces
+      <span class="count-tag">{{ unknown_faces | length }}</span>
+    </div>
+    <div class="unknown-grid">
+      {% for u in unknown_faces %}
+      <div class="unknown-card">
+        <img class="unknown-face" src="{{ u.face_thumb }}" alt="unidentified">
+        <div class="unknown-source" title="{{ u.source_filename }}">{{ u.source_filename }}</div>
+        <select onchange="assignUnknownFace({{ u.id }}, this.value)">
+          <option value="">Assign to…</option>
+          {% for p in performers %}
+          <option value="{{ p.id }}">{{ p.canonical_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</main>
+
+<div id="toastContainer"></div>
+
+<a class="version-badge" href="https://github.com/ReBaunana/video-transcoder/releases" target="_blank" rel="noopener">
+  v{{ version }}
+</a>
+
+<script>
+  /* ── Toast ─────────────────────────────────────────────── */
+  function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (type || '');
+    el.textContent = msg;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 2600);
+  }
+
+  async function api(method, url, body) {
+    const opts = { method, headers: {} };
+    if (body instanceof FormData) {
+      opts.body = body;
+    } else if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('application/json') ? r.json() : r.text();
+  }
+
+  /* ── Live search ───────────────────────────────────────── */
+  let _searchTimer = null;
+  document.getElementById('searchInput').addEventListener('input', e => {
+    clearTimeout(_searchTimer);
+    const q = e.target.value.trim().toLowerCase();
+
+    // immediate client-side filter for snappy feel
+    document.querySelectorAll('.perf-card').forEach(card => {
+      const name = card.dataset.name || '';
+      card.classList.toggle('hidden', q && !name.includes(q));
+    });
+
+    // debounced server fetch for authoritative result
+    _searchTimer = setTimeout(() => {
+      fetch('/performers?search=' + encodeURIComponent(q), { headers: { 'Accept': 'text/html' } })
+        .then(r => r.text())
+        .then(html => {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const newGrid = doc.getElementById('perfGrid');
+          const cur = document.getElementById('perfGrid');
+          if (newGrid && cur) cur.innerHTML = newGrid.innerHTML;
+          const url = new URL(location.href);
+          if (q) url.searchParams.set('search', q); else url.searchParams.delete('search');
+          history.replaceState({}, '', url);
+        })
+        .catch(() => {});
+    }, 300);
+  });
+
+  /* ── View tabs ─────────────────────────────────────────── */
+  function setView(btn, view) {
+    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.perf-card').forEach(card => {
+      const ready = card.dataset.ready === '1';
+      let show = true;
+      if (view === 'ready') show = ready;
+      else if (view === 'unverified') show = !ready;
+      card.classList.toggle('hidden', !show);
+    });
+  }
+
+  /* ── Performer rename (inline edit) ────────────────────── */
+  function editPerformerName(el, id) {
+    if (!el) return;
+    el.contentEditable = 'true';
+    el.focus();
+    document.execCommand('selectAll', false, null);
+    const original = el.textContent.trim();
+
+    const save = async () => {
+      el.contentEditable = 'false';
+      el.removeEventListener('blur', save);
+      el.removeEventListener('keydown', onKey);
+      const v = el.textContent.trim();
+      if (!v || v === original) { el.textContent = original; return; }
+      try {
+        await api('PATCH', `/performers/${id}`, { canonical_name: v });
+        toast('Renamed', 'ok');
+      } catch (e) {
+        el.textContent = original;
+        toast('Rename failed: ' + e.message, 'err');
+      }
+    };
+    const onKey = e => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+      else if (e.key === 'Escape') { el.textContent = original; el.blur(); }
+    };
+    el.addEventListener('blur', save);
+    el.addEventListener('keydown', onKey);
+  }
+
+  /* ── Confirm / reject videos ───────────────────────────── */
+  async function confirmVideo(performerId, fileId, btn) {
+    try {
+      await api('POST', `/performers/${performerId}/videos/${fileId}/confirm`);
+      const card = btn.closest('.video-card');
+      card.classList.remove('rejected');
+      card.classList.add('confirmed');
+      card.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      toast('Confirmed', 'ok');
+    } catch (e) { toast('Confirm failed: ' + e.message, 'err'); }
+  }
+
+  async function rejectVideo(performerId, fileId, btn) {
+    try {
+      await api('POST', `/performers/${performerId}/videos/${fileId}/reject`);
+      const card = btn.closest('.video-card');
+      card.classList.remove('confirmed');
+      card.classList.add('rejected');
+      card.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      toast('Rejected', 'ok');
+    } catch (e) { toast('Reject failed: ' + e.message, 'err'); }
+  }
+
+  /* ── Reference photo upload ─────────────────────────────── */
+  const uploadZone = document.getElementById('uploadZone');
+  if (uploadZone) {
+    ['dragenter', 'dragover'].forEach(evt => {
+      uploadZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      uploadZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.remove('dragover'); });
+    });
+    uploadZone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const input = document.getElementById('photoInput');
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+
+  async function handlePhoto(input, performerId) {
+    const file = input.files[0];
+    if (!file) return;
+
+    // preview
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = document.getElementById('uploadPreview');
+      const ic  = document.getElementById('uploadIcon');
+      img.src = ev.target.result;
+      img.style.display = 'inline-block';
+      if (ic) ic.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+
+    // upload
+    const fd = new FormData();
+    fd.append('photo', file);
+    try {
+      await api('POST', `/performers/${performerId}/photo`, fd);
+      toast('Photo uploaded', 'ok');
+    } catch (e) { toast('Upload failed: ' + e.message, 'err'); }
+  }
+
+  /* ── Per-performer ops ─────────────────────────────────── */
+  async function runFaceScan(id) {
+    try {
+      await api('POST', `/performers/${id}/enqueue-scan`);
+      toast('Face scan queued', 'ok');
+    } catch (e) { toast('Failed: ' + e.message, 'err'); }
+  }
+
+  async function mergePerformer(sourceId) {
+    const target = document.getElementById('mergeTarget').value;
+    if (!target) return toast('Select a target performer', 'err');
+    if (!confirm(`Merge this performer into the selected one? This cannot be undone.`)) return;
+    try {
+      await api('POST', '/performers/merge', { source_id: sourceId, target_id: parseInt(target, 10) });
+      toast('Merged', 'ok');
+      setTimeout(() => location.href = `/performers?id=${target}`, 700);
+    } catch (e) { toast('Merge failed: ' + e.message, 'err'); }
+  }
+
+  async function renameAllConfirmed(id) {
+    if (!confirm('Approve and rename all confirmed videos for this performer?')) return;
+    try {
+      await api('POST', `/performers/${id}/rename-all`);
+      toast('Rename started', 'ok');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) { toast('Failed: ' + e.message, 'err'); }
+  }
+
+  async function renameVideo(fileId) {
+    try {
+      await api('POST', `/library/files/${fileId}/approve`);
+      toast('Approved — will rename on next batch', 'ok');
+    } catch (e) { toast('Failed: ' + e.message, 'err'); }
+  }
+
+  /* ── Unknown face assignment ────────────────────────────── */
+  async function assignUnknownFace(faceId, performerId) {
+    if (!performerId) return;
+    try {
+      await api('POST', `/performers/${performerId}/faces/${faceId}/assign`);
+      toast('Assigned', 'ok');
+    } catch (e) { toast('Failed: ' + e.message, 'err'); }
+  }
+
+  function closeDetail() {
+    const url = new URL(location.href);
+    url.searchParams.delete('id');
+    location.href = url.toString();
+  }
+</script>
+
+</body>
+</html>

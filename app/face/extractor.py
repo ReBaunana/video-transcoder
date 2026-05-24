@@ -1,0 +1,405 @@
+"""Frame extraction, face detection, and embedding storage."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import sqlite3
+import subprocess
+import tempfile
+import time
+import uuid
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from app.face.model import embed_to_blob, get_face_app
+
+log = logging.getLogger(__name__)
+
+THUMB_DIR = Path("/data/face_thumbs")
+THUMB_SIZE = (160, 160)
+
+# Detection / quality thresholds.
+MIN_DET_SCORE = 0.6
+MIN_FACE_PIXELS = 64
+MAX_FACES_PER_FRAME = 6  # drop crowd scenes entirely
+
+# Seeding policy.
+QUALITY_KEEP_THRESHOLD = 0.3
+DEDUP_COSINE_THRESHOLD = 0.92
+MAX_EMBEDDINGS_PER_FILE = 15
+REFERENCE_READY_MIN = 8
+
+FFMPEG_BIN = os.environ.get("FFMPEG_BIN", "ffmpeg")
+FFMPEG_TIMEOUT_SEC = 20
+
+
+def ensure_thumb_dir() -> None:
+    """Create /data/face_thumbs/ with mode 0o755 if missing."""
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(THUMB_DIR, 0o755)
+    except PermissionError:
+        log.debug("ensure_thumb_dir: chmod skipped (not owner)")
+
+
+def _sample_timestamps(duration_sec: float) -> list[float]:
+    """Uniform timestamps within the middle 87% of the clip."""
+    if duration_sec <= 1.0:
+        return []
+    start = duration_sec * 0.08
+    end = duration_sec * 0.95
+    if end <= start:
+        return []
+    n = max(40, min(60, int(duration_sec / 30)))
+    if n <= 1:
+        return [(start + end) / 2.0]
+    step = (end - start) / (n - 1)
+    return [start + i * step for i in range(n)]
+
+
+def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
+    """Extract frames from video using ffmpeg subprocess.
+
+    Returns list of (timestamp_sec, BGR image). Empty list on any error.
+    """
+    timestamps = _sample_timestamps(duration_sec)
+    if not timestamps:
+        return []
+
+    if not Path(video_path).exists():
+        log.warning("extract_frames: video missing path=%s", video_path)
+        return []
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vt_frames_"))
+    out: list[tuple[float, np.ndarray]] = []
+    try:
+        for t in timestamps:
+            frame_path = tmp_dir / f"vt_frame_{uuid.uuid4().hex}.jpg"
+            cmd = [
+                FFMPEG_BIN,
+                "-nostdin",
+                "-loglevel", "error",
+                "-ss", f"{t:.3f}",
+                "-i", video_path,
+                "-frames:v", "1",
+                "-q:v", "3",
+                "-vf", "scale='min(1280,iw)':-2",
+                "-y",
+                str(frame_path),
+            ]
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=FFMPEG_TIMEOUT_SEC,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                log.warning("extract_frames: ffmpeg timeout t=%.2f path=%s", t, video_path)
+                continue
+            except FileNotFoundError:
+                log.error("extract_frames: ffmpeg binary not found (%s)", FFMPEG_BIN)
+                return []
+
+            if proc.returncode != 0 or not frame_path.exists():
+                log.debug(
+                    "extract_frames: ffmpeg rc=%s t=%.2f stderr=%s",
+                    proc.returncode, t, proc.stderr[:200] if proc.stderr else b"",
+                )
+                continue
+
+            img = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
+            if img is None:
+                log.debug("extract_frames: cv2 failed to decode %s", frame_path)
+                continue
+            out.append((t, img))
+    except Exception:
+        log.exception("extract_frames: unexpected failure path=%s", video_path)
+        return []
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return out
+
+
+def detect_faces(img: np.ndarray) -> list[dict]:
+    """Run InsightFace detection on one image.
+
+    Returns list of {embedding, det_score, bbox, normed_embedding}.
+    Returns [] for crowd scenes (>MAX_FACES_PER_FRAME).
+    """
+    try:
+        app = get_face_app()
+    except Exception:
+        log.exception("detect_faces: face app unavailable")
+        return []
+
+    try:
+        faces = app.get(img)
+    except Exception:
+        log.exception("detect_faces: insightface .get() failed")
+        return []
+
+    if not faces:
+        return []
+    if len(faces) > MAX_FACES_PER_FRAME:
+        return []  # crowd scene — skip entirely
+
+    results: list[dict] = []
+    for f in faces:
+        det_score = float(getattr(f, "det_score", 0.0))
+        if det_score < MIN_DET_SCORE:
+            continue
+
+        bbox_raw = getattr(f, "bbox", None)
+        if bbox_raw is None:
+            continue
+        bbox = [float(v) for v in np.asarray(bbox_raw).reshape(-1)[:4]]
+        x1, y1, x2, y2 = bbox
+        w, h = max(0.0, x2 - x1), max(0.0, y2 - y1)
+        if w < MIN_FACE_PIXELS or h < MIN_FACE_PIXELS:
+            continue
+
+        emb = getattr(f, "embedding", None)
+        if emb is None:
+            continue
+        emb = np.asarray(emb, dtype=np.float32).reshape(-1)
+
+        normed = getattr(f, "normed_embedding", None)
+        if normed is None:
+            n = float(np.linalg.norm(emb))
+            normed = (emb / n) if n > 0 else emb
+        normed = np.asarray(normed, dtype=np.float32).reshape(-1)
+
+        results.append({
+            "embedding": emb,
+            "normed_embedding": normed,
+            "det_score": det_score,
+            "bbox": bbox,
+        })
+
+    return results
+
+
+def compute_quality_score(img: np.ndarray, bbox: list) -> float:
+    """Blur (Laplacian variance) + bbox area score, in [0, 1]."""
+    try:
+        x1, y1, x2, y2 = [int(round(v)) for v in bbox[:4]]
+        h_img, w_img = img.shape[:2]
+        x1 = max(0, min(w_img - 1, x1))
+        y1 = max(0, min(h_img - 1, y1))
+        x2 = max(0, min(w_img, x2))
+        y2 = max(0, min(h_img, y2))
+        if x2 - x1 < 8 or y2 - y1 < 8:
+            return 0.0
+
+        crop = img[y1:y2, x1:x2]
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        # 200 var ~= sharp; clamp.
+        blur_score = max(0.0, min(1.0, lap_var / 200.0))
+
+        face_area = (x2 - x1) * (y2 - y1)
+        # 320x320 face = full score.
+        area_score = max(0.0, min(1.0, face_area / (320.0 * 320.0)))
+
+        return float(0.6 * blur_score + 0.4 * area_score)
+    except Exception:
+        log.debug("compute_quality_score failed", exc_info=True)
+        return 0.0
+
+
+def save_face_thumbnail(img: np.ndarray, bbox: list, embedding_id: int) -> str:
+    """Crop face with 20% padding, resize to 160x160, save JPEG.
+
+    Returns absolute path string.
+    """
+    ensure_thumb_dir()
+    x1, y1, x2, y2 = [float(v) for v in bbox[:4]]
+    w, h = x2 - x1, y2 - y1
+    pad_x, pad_y = w * 0.20, h * 0.20
+
+    h_img, w_img = img.shape[:2]
+    x1p = int(max(0, round(x1 - pad_x)))
+    y1p = int(max(0, round(y1 - pad_y)))
+    x2p = int(min(w_img, round(x2 + pad_x)))
+    y2p = int(min(h_img, round(y2 + pad_y)))
+
+    if x2p - x1p < 8 or y2p - y1p < 8:
+        raise ValueError(f"save_face_thumbnail: bbox too small after padding: {bbox}")
+
+    crop = img[y1p:y2p, x1p:x2p]
+    resized = cv2.resize(crop, THUMB_SIZE, interpolation=cv2.INTER_AREA)
+
+    out_path = THUMB_DIR / f"{embedding_id}.jpg"
+    ok = cv2.imwrite(str(out_path), resized, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    if not ok:
+        raise IOError(f"cv2.imwrite failed for {out_path}")
+    return str(out_path)
+
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.dot(a, b))  # both already L2-normalized
+
+
+def process_video_for_seeding(
+    conn: sqlite3.Connection,
+    file_curation_id: int,
+    performer_id: int,
+    video_path: str,
+    duration: float,
+) -> int:
+    """Extract faces from a single-performer video and store embeddings.
+
+    Returns number of embeddings stored.
+    """
+    ensure_thumb_dir()
+
+    frames = extract_frames(video_path, duration)
+    if not frames:
+        log.info("seeding: no frames extracted file_id=%s", file_curation_id)
+        return 0
+
+    # Step 1+2: detect; keep only frames with exactly 1 face.
+    candidates: list[dict] = []
+    for t, img in frames:
+        faces = detect_faces(img)
+        if len(faces) != 1:
+            continue
+        f = faces[0]
+        q = compute_quality_score(img, f["bbox"])
+        if q <= QUALITY_KEEP_THRESHOLD:
+            continue
+        candidates.append({
+            "frame_time_sec": t,
+            "img": img,
+            "embedding": f["embedding"],
+            "normed_embedding": f["normed_embedding"],
+            "det_score": f["det_score"],
+            "bbox": f["bbox"],
+            "quality_score": q,
+        })
+
+    if not candidates:
+        log.info("seeding: no qualifying single-face frames file_id=%s", file_curation_id)
+        return 0
+
+    # Step 4: dedupe — keep higher quality of any pair with cosine > threshold.
+    candidates.sort(key=lambda c: c["quality_score"], reverse=True)
+    kept: list[dict] = []
+    for c in candidates:
+        dup = False
+        for k in kept:
+            if _cosine(c["normed_embedding"], k["normed_embedding"]) > DEDUP_COSINE_THRESHOLD:
+                dup = True
+                break
+        if not dup:
+            kept.append(c)
+        if len(kept) >= MAX_EMBEDDINGS_PER_FILE:
+            break
+
+    # Step 6: insert.
+    stored = 0
+    cur = conn.cursor()
+    try:
+        for c in kept:
+            blob = embed_to_blob(c["normed_embedding"])
+            bbox_json = json.dumps([round(v, 2) for v in c["bbox"]])
+            cur.execute(
+                """
+                INSERT INTO face_embedding
+                    (performer_id, file_curation_id, source, embedding,
+                     det_score, bbox, frame_time_sec, thumbnail_path, quality_score, created_at)
+                VALUES (?, ?, 'video_frame', ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    performer_id,
+                    file_curation_id,
+                    blob,
+                    c["det_score"],
+                    bbox_json,
+                    c["frame_time_sec"],
+                    None,
+                    c["quality_score"],
+                    int(time.time()),
+                ),
+            )
+            emb_id = cur.lastrowid
+            try:
+                thumb_path = save_face_thumbnail(c["img"], c["bbox"], emb_id)
+                cur.execute(
+                    "UPDATE face_embedding SET thumbnail_path = ? WHERE id = ?",
+                    (thumb_path, emb_id),
+                )
+            except Exception:
+                log.exception("seeding: thumbnail save failed emb_id=%s", emb_id)
+            stored += 1
+
+        # Step 7: update performer stats.
+        cur.execute(
+            "SELECT COUNT(*) FROM face_embedding WHERE performer_id = ?",
+            (performer_id,),
+        )
+        total = int(cur.fetchone()[0])
+        cur.execute(
+            """
+            UPDATE performer
+               SET embedding_count = ?,
+                   is_reference_ready = CASE WHEN ? >= ? THEN 1 ELSE is_reference_ready END
+             WHERE id = ?
+            """,
+            (total, total, REFERENCE_READY_MIN, performer_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        log.exception(
+            "seeding: DB error file_id=%s performer_id=%s",
+            file_curation_id, performer_id,
+        )
+        raise
+
+    log.info(
+        "seeding: stored=%d performer_id=%s file_id=%s (total=%d)",
+        stored, performer_id, file_curation_id, total,
+    )
+    return stored
+
+
+def process_video_for_matching(
+    conn: sqlite3.Connection,  # noqa: ARG001 — kept for symmetry / future use
+    file_curation_id: int,
+    video_path: str,
+    duration: float,
+) -> list[dict]:
+    """Extract all faces from an unknown video (no DB writes).
+
+    Returns list of dicts: {embedding, det_score, bbox, frame_time_sec, quality_score}.
+    """
+    frames = extract_frames(video_path, duration)
+    if not frames:
+        log.info("matching: no frames extracted file_id=%s", file_curation_id)
+        return []
+
+    out: list[dict] = []
+    for t, img in frames:
+        faces = detect_faces(img)
+        for f in faces:
+            q = compute_quality_score(img, f["bbox"])
+            if q <= QUALITY_KEEP_THRESHOLD:
+                continue
+            out.append({
+                "embedding": f["normed_embedding"],
+                "det_score": f["det_score"],
+                "bbox": f["bbox"],
+                "frame_time_sec": t,
+                "quality_score": q,
+            })
+
+    log.info("matching: extracted %d faces file_id=%s", len(out), file_curation_id)
+    return out
