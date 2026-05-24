@@ -625,7 +625,9 @@ def _auto_seed_performers_from_tpdb(
                     return max(0.0, float((x2 - x1) * (y2 - y1)))
 
                 face = max(faces, key=_area)
-                embedding = getattr(face, "normed_embedding", None) or getattr(face, "embedding", None)
+                embedding = getattr(face, "normed_embedding", None)
+                if embedding is None:
+                    embedding = getattr(face, "embedding", None)
                 if embedding is None:
                     continue
 
