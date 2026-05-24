@@ -15,7 +15,9 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get inst
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt \
+    && pip3 uninstall -y onnxruntime || true \
+    && pip3 install --no-cache-dir --break-system-packages --force-reinstall 'onnxruntime-gpu>=1.18.0'
 
 COPY VERSION ./
 COPY app/ app/
