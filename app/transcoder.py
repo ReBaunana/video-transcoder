@@ -168,13 +168,12 @@ _VAAPI_DECODE_OK = frozenset({'h264', 'hevc', 'mpeg2video', 'vp8', 'vp9', 'av1'}
 # Hardware decoders available on Ampere (RTX 30xx) and newer.
 # av1_cuvid requires Ampere+; mpeg4_cuvid can fail on malformed DivX/Xvid headers
 # but the Intel VAAPI or CPU-decode fallback in transcode_file handles that transparently.
+# vc1/wmv3 omitted — vc1_cuvid hangs silently on some files; CPU decode is reliable.
 _CUVID_MAP = {
     'h264':       'h264_cuvid',
     'hevc':       'hevc_cuvid',
     'mpeg2video': 'mpeg2_cuvid',
     'mpeg4':      'mpeg4_cuvid',
-    'vc1':        'vc1_cuvid',
-    'wmv3':       'vc1_cuvid',
     'vp8':        'vp8_cuvid',
     'vp9':        'vp9_cuvid',
     'av1':        'av1_cuvid',
@@ -413,6 +412,10 @@ def transcode_file(path: Path, db, slot_id: int, backend: str = 'nvenc') -> str:
 
     out_ext  = OUTPUT_EXT.get(path.suffix.lower(), '.mkv')
     tmp      = path.with_name(path.stem + '.transcoding' + out_ext)
+    if len(tmp.name) > 255:
+        log.warning(f'[W{slot_id}] filename too long ({len(tmp.name)} chars) — skipping permanently')
+        cache_set(db, str(path), st.st_size, st.st_mtime, codec, info['duration'], cq=f'guard:{_cq}')
+        return 'skipped'
     dest     = path.with_suffix(out_ext)
     mount    = path.parts[2] if len(path.parts) > 2 else ''
     src_size = st.st_size
