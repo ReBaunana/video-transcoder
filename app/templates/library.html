@@ -86,12 +86,31 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .mount-pct-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: .3rem;
+  }
+  .mount-pct-label {
+    font-size: .64rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .mount-pct-value {
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+  }
+
   .mount-bars {
     display: flex;
-    height: 4px;
+    height: 6px;
     background: var(--surface-3);
     border-radius: 99px;
     overflow: hidden;
+    margin-bottom: .4rem;
   }
   .mount-bar-renamed { background: var(--green); }
   .mount-bar-approved { background: var(--accent); }
@@ -571,6 +590,10 @@
             <span class="mount-name">{{ m.name }}</span>
             <span class="mount-total">{{ m.total }}</span>
           </div>
+          <div class="mount-pct-row">
+            <span class="mount-pct-label">{{ m.renamed }} / {{ m.total }} renamed</span>
+            <span class="mount-pct-value">{{ pct_renamed | int }}%</span>
+          </div>
           <div class="mount-bars">
             <div class="mount-bar-renamed"  style="width: {{ pct_renamed }}%"></div>
             <div class="mount-bar-approved" style="width: {{ pct_approved }}%"></div>
@@ -578,9 +601,8 @@
             <div class="mount-bar-skipped"  style="width: {{ pct_skipped }}%"></div>
           </div>
           <div class="mount-stats">
-            <span class="ms-renamed">{{ m.renamed }} renamed</span>
+            {% if m.approved %}<span class="ms-approved">{{ m.approved }} approved</span>{% endif %}
             <span class="ms-pending">{{ m.pending }} pending</span>
-            {% if m.approved %}<span class="ms-approved">{{ m.approved }} ok</span>{% endif %}
           </div>
         </a>
       {% else %}
