@@ -92,6 +92,18 @@ async def startup():
     except Exception as exc:
         log.error(f'migrate_tpdb failed: {exc}')
 
+    # Reset face jobs left in 'running' state by a previous crash so they are
+    # retried instead of silently hanging forever.
+    try:
+        cur = db.execute(
+            "UPDATE face_recognition_job SET status='pending', started_at=NULL WHERE status='running'"
+        )
+        if cur.rowcount:
+            log.info('Reset %d stuck face recognition jobs to pending', cur.rowcount)
+        db.commit()
+    except Exception as exc:
+        log.warning(f'Failed to reset stuck face jobs: {exc}')
+
     # Make the shared DB connection available to APIRouters via app.state.
     app.state.db = db
 

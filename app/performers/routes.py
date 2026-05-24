@@ -180,7 +180,12 @@ async def performers_index(
         like = f'%{search}%'
         rows = conn.execute(
             """
-            SELECT p.id, p.canonical_name, p.slug, p.profile_thumb,
+            SELECT p.id, p.canonical_name, p.slug,
+                   COALESCE(p.profile_thumb,
+                       (SELECT fe.thumbnail_path FROM face_embedding fe
+                         WHERE fe.performer_id = p.id AND fe.thumbnail_path IS NOT NULL
+                         ORDER BY COALESCE(fe.quality_score, 0) DESC LIMIT 1)
+                   ) AS profile_thumb,
                    p.embedding_count, p.is_reference_ready,
                    (SELECT COUNT(*) FROM file_performer fp WHERE fp.performer_id = p.id) AS video_count
               FROM performer p

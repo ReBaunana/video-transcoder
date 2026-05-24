@@ -532,6 +532,12 @@
     </svg>
     Remove missing
   </button>
+  <button class="btn btn-stop" onclick="purgeOrphanPerformers()" title="Delete performers with no linked videos">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/><line x1="18" y1="6" x2="22" y2="10"/><line x1="22" y1="6" x2="18" y2="10"/>
+    </svg>
+    Purge performers
+  </button>
   <button class="btn" onclick="enqueueFaceRec()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66c1.5-2.27 2.97-3.41 5-3.41s3.5 1.14 5 3.41"/>
@@ -938,6 +944,14 @@
       const d = await apiPost('/library/purge-missing', { mount });
       toast(`Removed ${d.removed} missing files (checked ${d.checked})`, d.removed > 0 ? 'ok' : 'info');
       if (d.removed > 0) setTimeout(() => location.reload(), 1000);
+    } catch (e) { toast('Purge failed: ' + e.message, 'err'); }
+  }
+
+  async function purgeOrphanPerformers() {
+    if (!confirm('Delete all performers that have no linked videos? This also removes their face embeddings.')) return;
+    try {
+      const d = await apiPost('/library/purge-orphan-performers', {});
+      toast(`Removed ${d.removed} orphan performers (checked ${d.checked})`, d.removed > 0 ? 'ok' : 'info');
     } catch (e) { toast('Purge failed: ' + e.message, 'err'); }
   }
 

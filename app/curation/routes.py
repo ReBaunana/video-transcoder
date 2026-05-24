@@ -383,6 +383,37 @@ async def library_purge_missing(request: Request):
     return JSONResponse({'ok': True, 'removed': removed, 'checked': len(rows)})
 
 
+@router.post('/library/purge-orphan-performers')
+async def library_purge_orphan_performers(request: Request):
+    """Delete performer rows that have no linked files.
+
+    A performer is an orphan when every file_curation row it was linked to has
+    been removed (e.g. by purge-missing). The cascade also removes their
+    face_embedding and performer_alias rows.
+    """
+    conn = _db(request)
+    orphans = conn.execute(
+        """
+        SELECT id, canonical_name FROM performer
+         WHERE id NOT IN (SELECT DISTINCT performer_id FROM file_performer)
+        """
+    ).fetchall()
+
+    removed = 0
+    for row in orphans:
+        try:
+            with conn:
+                conn.execute("DELETE FROM face_embedding WHERE performer_id = ?", (row['id'],))
+                conn.execute("DELETE FROM performer_alias WHERE performer_id = ?", (row['id'],))
+                conn.execute("DELETE FROM performer WHERE id = ?", (row['id'],))
+            removed += 1
+        except Exception:
+            log.exception('purge-orphan-performers: delete failed for id=%s name=%s', row['id'], row['canonical_name'])
+
+    log.info('purge-orphan-performers: checked=%d removed=%d', len(orphans), removed)
+    return JSONResponse({'ok': True, 'removed': removed, 'checked': len(orphans)})
+
+
 # ── Per-file actions ─────────────────────────────────────────────────────────
 
 @router.post('/library/files/{file_id}/approve')
