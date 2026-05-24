@@ -160,6 +160,21 @@ async def library_page(
 
     stats = dbc.get_library_stats(conn)
 
+    # Build mount dicts (name + stats) for the sidebar template.
+    _stats_by_mount = {s['mount']: s for s in stats}
+    mounts_ctx = [
+        {
+            'name':     m,
+            'total':    _stats_by_mount.get(m, {}).get('total', 0),
+            'renamed':  _stats_by_mount.get(m, {}).get('renamed', 0),
+            'approved': _stats_by_mount.get(m, {}).get('approved', 0),
+            'pending':  _stats_by_mount.get(m, {}).get('pending', 0),
+            'skipped':  _stats_by_mount.get(m, {}).get('skipped', 0),
+            'unknown':  _stats_by_mount.get(m, {}).get('unknown', 0),
+        }
+        for m in MEDIA_MOUNTS
+    ]
+
     try:
         worker_status = face_worker.get_worker_status()
     except Exception as exc:  # pragma: no cover — defensive
@@ -167,7 +182,7 @@ async def library_page(
         worker_status = {'running': False, 'queue_size': 0, 'error': str(exc)}
 
     context = {
-        'mounts': MEDIA_MOUNTS,
+        'mounts': mounts_ctx,
         'selected_mount': selected_mount,
         'status_filter': status,
         'page': page,
