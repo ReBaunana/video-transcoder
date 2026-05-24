@@ -1,843 +1,520 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Library · Video Transcoder</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+{% extends "base.html" %}
+{% set page_id = 'library' %}
 
-    :root {
-      --bg:           #080810;
-      --surface:      #0d0d1e;
-      --surface-2:    #12122a;
-      --surface-3:    #181838;
-      --border:       rgba(255,255,255,.055);
-      --border-hover: rgba(255,255,255,.11);
-      --text:         #dde0f0;
-      --text-muted:   #555878;
-      --text-dim:     #2e304a;
-      --accent:       #6c8ef5;
-      --accent-dim:   rgba(108,142,245,.18);
-      --accent-glow:  rgba(108,142,245,.3);
-      --accent-2:     #a78bfa;
-      --green:        #34d399;
-      --green-bg:     rgba(52,211,153,.09);
-      --red:          #f87171;
-      --red-bg:       rgba(248,113,113,.09);
-      --yellow:       #fbbf24;
-      --cyan:         #67e8f9;
-      --cyan-bg:      rgba(103,232,249,.09);
-      --radius:       .8rem;
-      --radius-sm:    .45rem;
-    }
+{% block title %}Library · Video Transcoder{% endblock %}
 
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg:           #f0f1f8;
-        --surface:      #f7f8fc;
-        --surface-2:    #eceef8;
-        --surface-3:    #e2e4f0;
-        --border:       rgba(80,90,160,.10);
-        --border-hover: rgba(80,90,160,.20);
-        --text:         #1a1c30;
-        --text-muted:   #7880aa;
-        --text-dim:     #b4b9d4;
-        --accent:       #4a6ef0;
-        --accent-dim:   rgba(74,110,240,.12);
-        --accent-glow:  rgba(74,110,240,.20);
-        --accent-2:     #7c5cf4;
-        --green:        #0ea869;
-        --green-bg:     rgba(14,168,105,.08);
-        --red:          #dc3f3f;
-        --red-bg:       rgba(220,63,63,.07);
-        --yellow:       #c48a00;
-        --cyan:         #0891b2;
-        --cyan-bg:      rgba(8,145,178,.07);
-      }
-    }
+{% block head_extra %}
+<style>
+  /* ─── Layout ────────────────────────────── */
+  main {
+    padding: 1.4rem 1.75rem 4rem;
+    max-width: 1640px;
+    margin: 0 auto;
+  }
 
-    [data-theme="light"] {
-      --bg:           #f0f1f8;
-      --surface:      #f7f8fc;
-      --surface-2:    #eceef8;
-      --surface-3:    #e2e4f0;
-      --border:       rgba(80,90,160,.10);
-      --border-hover: rgba(80,90,160,.20);
-      --text:         #1a1c30;
-      --text-muted:   #7880aa;
-      --text-dim:     #b4b9d4;
-      --accent:       #4a6ef0;
-      --accent-dim:   rgba(74,110,240,.12);
-      --accent-glow:  rgba(74,110,240,.20);
-      --accent-2:     #7c5cf4;
-      --green:        #0ea869;
-      --green-bg:     rgba(14,168,105,.08);
-      --red:          #dc3f3f;
-      --red-bg:       rgba(220,63,63,.07);
-      --yellow:       #c48a00;
-      --cyan:         #0891b2;
-      --cyan-bg:      rgba(8,145,178,.07);
-    }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 1.1rem;
+    align-items: start;
+  }
 
-    [data-theme="dark"] {
-      --bg:           #080810;
-      --surface:      #0d0d1e;
-      --surface-2:    #12122a;
-      --surface-3:    #181838;
-      --border:       rgba(255,255,255,.055);
-      --border-hover: rgba(255,255,255,.11);
-      --text:         #dde0f0;
-      --text-muted:   #555878;
-      --text-dim:     #2e304a;
-      --accent:       #6c8ef5;
-      --accent-dim:   rgba(108,142,245,.18);
-      --accent-glow:  rgba(108,142,245,.3);
-      --accent-2:     #a78bfa;
-      --green:        #34d399;
-      --green-bg:     rgba(52,211,153,.09);
-      --red:          #f87171;
-      --red-bg:       rgba(248,113,113,.09);
-      --yellow:       #fbbf24;
-      --cyan:         #67e8f9;
-      --cyan-bg:      rgba(103,232,249,.09);
-    }
+  /* ─── Mount sidebar ────────────────────────────── */
+  .mounts-sidebar {
+    position: sticky;
+    top: calc(56px + .6rem);
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
 
-    body, header, .card, .panel, .badge, .btn, th, tbody tr, .mount-card, .stat-card {
-      transition: background-color .22s ease, color .18s ease,
-                  border-color .18s ease, box-shadow .2s ease;
-    }
+  .sidebar-title {
+    font-size: .66rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 0 .5rem .4rem;
+  }
 
-    html { scroll-behavior: smooth; }
+  .mount-card {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    padding: .7rem .85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color .22s ease, border-color .18s ease, box-shadow .2s ease;
+  }
+  .mount-card:hover {
+    border-color: var(--border-hover);
+    box-shadow: 0 4px 18px rgba(0,0,0,.3);
+  }
+  .mount-card.active {
+    border-color: rgba(108,142,245,.42);
+    background: var(--accent-dim);
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 13.5px;
-      line-height: 1.55;
-      min-height: 100vh;
-    }
+  .mount-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+  }
 
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+  .mount-name {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mount-card.active .mount-name { color: var(--accent); }
 
-    /* ─── Top bar (sticky) ────────────────────────────── */
-    #topBar { position: sticky; top: 0; z-index: 100; }
+  .mount-total {
+    font-size: .68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
 
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: .7rem 1.75rem;
-      background: rgba(8,8,16,.88);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-    }
-    [data-theme="light"] header { background: rgba(240,241,248,.88); }
+  .mount-bars {
+    display: flex;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .mount-bar-renamed { background: var(--green); }
+  .mount-bar-approved { background: var(--accent); }
+  .mount-bar-pending { background: var(--yellow); }
+  .mount-bar-skipped { background: var(--text-dim); }
 
-    .header-left { display: flex; align-items: center; gap: 1.2rem; min-width: 0; }
+  .mount-stats {
+    display: flex;
+    gap: .55rem;
+    font-size: .65rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .mount-stats .ms-renamed { color: var(--green); }
+  .mount-stats .ms-pending { color: var(--yellow); }
+  .mount-stats .ms-approved { color: var(--accent); }
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      font-size: .875rem;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -.015em;
-      white-space: nowrap;
-      flex-shrink: 0;
-      text-decoration: none;
-    }
+  /* ─── Stats row ────────────────────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .65rem;
+    margin-bottom: 1.1rem;
+  }
 
-    .logo-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-      border-radius: .35rem;
-      flex-shrink: 0;
-    }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .7rem 1rem;
+    position: relative;
+    overflow: hidden;
+    transition: background-color .22s ease, border-color .18s ease;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(140deg, rgba(255,255,255,.03) 0%, transparent 55%);
+    pointer-events: none;
+  }
+  .stat-card-lbl {
+    font-size: .65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin-bottom: .35rem;
+  }
+  .stat-card-val {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -.04em;
+    line-height: 1;
+  }
+  .stat-card-val small {
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: .3rem;
+  }
+  .stat-card.c-blue .stat-card-val { color: var(--accent); }
+  .stat-card.c-green .stat-card-val { color: var(--green); }
+  .stat-card.c-yellow .stat-card-val { color: var(--yellow); }
+  .stat-card.c-cyan .stat-card-val { color: var(--cyan); }
 
-    /* ─── Nav tabs ────────────────────────────── */
-    .nav-tabs {
-      display: flex;
-      align-items: center;
-      gap: .15rem;
-      padding: .2rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-    }
-    .nav-tab {
-      padding: .35rem .85rem;
-      font-size: .73rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      border-radius: 99px;
-      text-decoration: none;
-      letter-spacing: .01em;
-      transition: color .15s, background .15s;
-    }
-    .nav-tab:hover { color: var(--text); }
-    .nav-tab.active {
-      background: var(--accent-dim);
-      color: var(--accent);
-    }
+  /* ─── Action bar ────────────────────────────── */
+  .action-bar {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    flex-wrap: wrap;
+    padding: .7rem .85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+  }
 
-    .header-actions { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
+  .filter-pills {
+    display: flex;
+    align-items: center;
+    gap: .2rem;
+    padding: .2rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+  }
+  .filter-pill {
+    padding: .3rem .75rem;
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 99px;
+    text-decoration: none;
+    letter-spacing: .01em;
+  }
+  .filter-pill:hover { color: var(--text); }
+  .filter-pill.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
 
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: .38rem;
-      padding: .42rem .85rem;
-      border: 1px solid var(--border);
-      background: var(--surface-2);
-      color: var(--text);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-family: inherit;
-      font-weight: 600;
-      font-size: .75rem;
-      letter-spacing: .01em;
-      transition: all .15s ease;
-      line-height: 1;
-      text-decoration: none;
-    }
-    .btn:hover { border-color: var(--border-hover); background: var(--surface-3); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .panel { margin-bottom: 1rem; }
 
-    .btn-run {
-      background: rgba(52,211,153,.1);
-      border-color: rgba(52,211,153,.22);
-      color: var(--green);
-    }
-    .btn-run:hover {
-      background: rgba(52,211,153,.18);
-      border-color: rgba(52,211,153,.4);
-      box-shadow: 0 0 14px rgba(52,211,153,.12);
-    }
-    .btn-stop {
-      background: rgba(248,113,113,.1);
-      border-color: rgba(248,113,113,.22);
-      color: var(--red);
-    }
-    .btn-stop:hover {
-      background: rgba(248,113,113,.18);
-      border-color: rgba(248,113,113,.4);
-      box-shadow: 0 0 14px rgba(248,113,113,.12);
-    }
-    .btn-accent {
-      background: var(--accent-dim);
-      border-color: rgba(108,142,245,.3);
-      color: var(--accent);
-    }
-    .btn-accent:hover {
-      background: rgba(108,142,245,.28);
-      border-color: rgba(108,142,245,.5);
-      box-shadow: 0 0 14px var(--accent-glow);
-    }
-    .btn-sm {
-      padding: .28rem .55rem;
-      font-size: .68rem;
-    }
+  /* ─── File table — fixed layout, sticky Actions column ─── */
+  .tbl-wrap {
+    overflow-x: auto;
+    /* allow the sticky Actions column to escape the scroll edge */
+    position: relative;
+  }
 
-    /* ─── Layout ────────────────────────────── */
-    main {
-      padding: 1.4rem 1.75rem 4rem;
-      max-width: 1640px;
-      margin: 0 auto;
-    }
+  #filesTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .77rem;
+    table-layout: fixed;
+  }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 1.1rem;
-      align-items: start;
-    }
+  /* Column widths — content cells use max-width:0 + ellipsis */
+  #filesTable col.col-cb        { width: 32px; }
+  #filesTable col.col-file      { width: 22%; }
+  #filesTable col.col-proposed  { width: 28%; }
+  #filesTable col.col-perf      { width: 18%; }
+  #filesTable col.col-conf      { width: 90px; }
+  #filesTable col.col-status    { width: 80px; }
+  #filesTable col.col-actions   { width: 120px; }
 
-    /* ─── Mount sidebar ────────────────────────────── */
-    .mounts-sidebar {
-      position: sticky;
-      top: calc(0px + 3.2rem);
-      max-height: calc(100vh - 4rem);
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: .4rem;
-    }
+  #filesTable th {
+    text-align: left;
+    padding: .58rem .8rem;
+    font-size: .66rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  #filesTable td {
+    padding: .55rem .8rem;
+    color: var(--text);
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0; /* required for ellipsis in table-layout:fixed cells */
+  }
 
-    .sidebar-title {
-      font-size: .66rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      padding: 0 .5rem .4rem;
-    }
+  /* Sticky Actions column — always visible on the right */
+  #filesTable th.th-actions,
+  #filesTable td.td-actions {
+    position: sticky;
+    right: 0;
+    background: var(--surface);
+    z-index: 1;
+    text-align: right;
+    box-shadow: -8px 0 12px -8px rgba(0,0,0,.35);
+  }
+  #filesTable tbody tr:hover td.td-actions { background: var(--surface-2); }
+  #filesTable tbody tr.row-selected td.td-actions { background: var(--accent-dim); }
+  #filesTable tbody tr.row-renamed  td.td-actions { background: rgba(52,211,153,.06); }
 
-    .mount-card {
-      display: flex;
-      flex-direction: column;
-      gap: .45rem;
-      padding: .7rem .85rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      text-decoration: none;
-      color: inherit;
-    }
-    .mount-card:hover {
-      border-color: var(--border-hover);
-      box-shadow: 0 4px 18px rgba(0,0,0,.3);
-    }
-    .mount-card.active {
-      border-color: rgba(108,142,245,.42);
-      background: var(--accent-dim);
-      box-shadow: 0 0 14px var(--accent-glow);
-    }
+  #filesTable tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+  }
+  #filesTable tbody tr:last-child { border: none; }
+  #filesTable tbody tr:hover { background: var(--surface-2); }
 
-    .mount-card-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: .5rem;
-    }
+  #filesTable tbody tr.row-approved { border-left: 3px solid var(--accent); }
+  #filesTable tbody tr.row-renamed  { background: rgba(52,211,153,.04); border-left: 3px solid var(--green); }
+  #filesTable tbody tr.row-skipped  { opacity: .55; }
+  #filesTable tbody tr.row-selected { background: var(--accent-dim) !important; }
 
-    .mount-name {
-      font-size: .8rem;
-      font-weight: 600;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .mount-card.active .mount-name { color: var(--accent); }
+  .td-file,
+  .td-proposed {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: .73rem;
+    font-weight: 500;
+  }
+  .td-proposed { color: var(--accent); }
+  .td-performers { color: var(--text-muted); font-size: .72rem; }
 
-    .mount-total {
-      font-size: .68rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      font-variant-numeric: tabular-nums;
-    }
+  .td-actions {
+    /* override generic ellipsis — we want buttons rendered side by side */
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .td-actions .actions-inner {
+    display: inline-flex;
+    gap: .3rem;
+    justify-content: flex-end;
+    align-items: center;
+  }
 
-    .mount-bars {
-      display: flex;
-      height: 4px;
-      background: var(--surface-3);
-      border-radius: 99px;
-      overflow: hidden;
-    }
-    .mount-bar-renamed { background: var(--green); }
-    .mount-bar-approved { background: var(--accent); }
-    .mount-bar-pending { background: var(--yellow); }
-    .mount-bar-skipped { background: var(--text-dim); }
+  /* ─── Confidence bar ────────────────────────────── */
+  .conf-wrap { display: flex; align-items: center; gap: .45rem; min-width: 70px; }
+  .conf-bar {
+    flex: 1;
+    height: 5px;
+    background: var(--surface-3);
+    border-radius: 99px;
+    overflow: hidden;
+    max-width: 50px;
+  }
+  .conf-fill { height: 100%; border-radius: 99px; }
+  .conf-fill.high { background: var(--green); }
+  .conf-fill.mid  { background: var(--yellow); }
+  .conf-fill.low  { background: var(--red); }
+  .conf-pct {
+    font-size: .68rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+    color: var(--text-muted);
+  }
 
-    .mount-stats {
-      display: flex;
-      gap: .55rem;
-      font-size: .65rem;
-      color: var(--text-muted);
-      font-variant-numeric: tabular-nums;
-    }
-    .mount-stats .ms-renamed { color: var(--green); }
-    .mount-stats .ms-pending { color: var(--yellow); }
-    .mount-stats .ms-approved { color: var(--accent); }
+  /* ─── Badges (status variants) ──────────────────── */
+  .badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
+  .badge-pending::before { background: var(--text-muted); }
+  .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(108,142,245,.22); }
+  .badge-approved::before { background: var(--accent); }
+  .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.22); }
+  .badge-renamed::before { background: var(--green); }
+  .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
+  .badge-skipped::before { background: var(--text-dim); }
 
-    /* ─── Stats row ────────────────────────────── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: .65rem;
-      margin-bottom: 1.1rem;
-    }
+  .face-link {
+    display: inline-block;
+    margin-top: .25rem;
+    padding: .12rem .45rem;
+    background: rgba(251,191,36,.1);
+    border: 1px solid rgba(251,191,36,.25);
+    border-radius: 99px;
+    font-size: .65rem;
+    font-weight: 600;
+    color: var(--yellow);
+    text-decoration: none;
+  }
+  .face-link:hover { background: rgba(251,191,36,.2); }
 
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: .7rem 1rem;
-      position: relative;
-      overflow: hidden;
-    }
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(140deg, rgba(255,255,255,.03) 0%, transparent 55%);
-      pointer-events: none;
-    }
-    .stat-card-lbl {
-      font-size: .65rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .07em;
-      margin-bottom: .35rem;
-    }
-    .stat-card-val {
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: -.04em;
-      line-height: 1;
-    }
-    .stat-card-val small {
-      font-size: .8rem;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-left: .3rem;
-    }
-    .stat-card.c-blue .stat-card-val { color: var(--accent); }
-    .stat-card.c-green .stat-card-val { color: var(--green); }
-    .stat-card.c-yellow .stat-card-val { color: var(--yellow); }
-    .stat-card.c-cyan .stat-card-val { color: var(--cyan); }
+  /* ─── Checkbox ────────────────────────────── */
+  input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
 
-    /* ─── Action bar ────────────────────────────── */
-    .action-bar {
-      display: flex;
-      align-items: center;
-      gap: .55rem;
-      flex-wrap: wrap;
-      padding: .7rem .85rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      margin-bottom: 1rem;
-    }
+  /* ─── Batch action bar ────────────────────────────── */
+  .batch-bar {
+    position: sticky;
+    bottom: 1rem;
+    display: none;
+    align-items: center;
+    gap: .65rem;
+    padding: .65rem 1rem;
+    background: var(--surface-2);
+    border: 1px solid rgba(108,142,245,.3);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    margin: 1rem 0;
+    z-index: 50;
+  }
+  .batch-bar.visible { display: flex; }
+  .batch-count {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
 
-    .action-bar .sep {
-      width: 1px;
-      height: 22px;
-      background: var(--border);
-      margin: 0 .2rem;
-    }
+  /* ─── Pagination ────────────────────────────── */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .8rem 1.15rem;
+    border-top: 1px solid var(--border);
+  }
+  .page-info {
+    font-size: .73rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .page-links { display: flex; gap: .35rem; }
 
-    .filter-pills {
-      display: flex;
-      align-items: center;
-      gap: .2rem;
-      padding: .2rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-    }
-    .filter-pill {
-      padding: .3rem .75rem;
-      font-size: .7rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      border-radius: 99px;
-      text-decoration: none;
-      letter-spacing: .01em;
-    }
-    .filter-pill:hover { color: var(--text); }
-    .filter-pill.active {
-      background: var(--accent-dim);
-      color: var(--accent);
-    }
+  /* ─── Rename section ────────────────────────────── */
+  .rename-section { margin-top: 1.4rem; }
 
-    /* ─── Panel ────────────────────────────── */
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      margin-bottom: 1rem;
-    }
+  .rename-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .85rem 1.15rem;
+    background: var(--surface);
+    border: 1px solid rgba(52,211,153,.22);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .rename-header.has-approved {
+    box-shadow: 0 0 18px rgba(52,211,153,.08);
+  }
+  .rename-header-left {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  .rename-icon { color: var(--green); }
+  .rename-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+  }
+  .rename-title {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .rename-sub {
+    font-size: .7rem;
+    color: var(--text-muted);
+  }
 
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .8rem 1.15rem;
-      border-bottom: 1px solid var(--border);
-    }
+  .rename-log {
+    display: none;
+    margin-top: .65rem;
+    padding: .85rem 1.15rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .rename-log.open { display: block; }
+  .rename-log-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .4rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: .72rem;
+    font-family: 'SF Mono', Menlo, monospace;
+  }
+  .rename-log-row:last-child { border: none; }
+  .rename-log-row .arrow {
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+  }
+  .rename-log-row .from { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rename-log-row .to   { color: var(--text);       flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    .panel-title {
-      font-size: .67rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-    }
+  /* ─── Empty state ────────────────────────────── */
+  .empty {
+    padding: 4rem 1.5rem;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: .85rem;
+  }
+  .empty svg { display: block; margin: 0 auto .8rem; opacity: .5; }
+  .empty-title {
+    color: var(--text-muted);
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: .3rem;
+  }
 
-    /* ─── File table ────────────────────────────── */
-    .tbl-wrap {
-      overflow-x: auto;
-    }
+  /* ─── Toast (library variant) ──────────────────── */
+  .toast {
+    padding: .6rem 1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: .75rem;
+    color: var(--text);
+    box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    pointer-events: auto;
+    animation: toast-in .25s ease;
+  }
+  .toast.ok  { border-color: rgba(52,211,153,.4); color: var(--green); }
+  .toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: .77rem;
-    }
+  .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
 
-    th {
-      text-align: left;
-      padding: .58rem 1rem;
-      font-size: .66rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .07em;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
+    .mount-card { min-width: 220px; flex: 1 1 220px; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+{% endblock %}
 
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background .1s;
-    }
-    tbody tr:last-child { border: none; }
-    tbody tr:hover { background: var(--surface-2); }
+{% block header_actions %}
+  {% if selected_mount %}
+  <button class="btn btn-accent" onclick="scanMount()">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    Scan mount
+  </button>
+  <button class="btn" onclick="enqueueFaceRec()">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66c1.5-2.27 2.97-3.41 5-3.41s3.5 1.14 5 3.41"/>
+    </svg>
+    Face rec on unknowns
+  </button>
+  {% endif %}
+{% endblock %}
 
-    tbody tr.row-approved { border-left: 3px solid var(--accent); }
-    tbody tr.row-renamed { background: rgba(52,211,153,.04); border-left: 3px solid var(--green); }
-    tbody tr.row-skipped { opacity: .55; }
-    tbody tr.row-selected { background: var(--accent-dim) !important; }
-
-    td {
-      padding: .55rem 1rem;
-      color: var(--text);
-      vertical-align: middle;
-    }
-
-    .td-file {
-      max-width: 320px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: 500;
-      font-family: 'SF Mono', Menlo, monospace;
-      font-size: .73rem;
-    }
-    .td-proposed {
-      max-width: 320px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--accent);
-      font-family: 'SF Mono', Menlo, monospace;
-      font-size: .73rem;
-    }
-    .td-performers {
-      color: var(--text-muted);
-      font-size: .72rem;
-      max-width: 180px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .td-actions {
-      white-space: nowrap;
-      display: flex;
-      gap: .3rem;
-    }
-
-    /* ─── Confidence bar ────────────────────────────── */
-    .conf-wrap { display: flex; align-items: center; gap: .45rem; min-width: 100px; }
-    .conf-bar {
-      flex: 1;
-      height: 5px;
-      background: var(--surface-3);
-      border-radius: 99px;
-      overflow: hidden;
-      max-width: 70px;
-    }
-    .conf-fill { height: 100%; border-radius: 99px; }
-    .conf-fill.high { background: var(--green); }
-    .conf-fill.mid  { background: var(--yellow); }
-    .conf-fill.low  { background: var(--red); }
-    .conf-pct {
-      font-size: .68rem;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      min-width: 28px;
-      color: var(--text-muted);
-    }
-
-    /* ─── Badges ────────────────────────────── */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: .28rem;
-      padding: .18rem .55rem;
-      border-radius: 99px;
-      font-size: .65rem;
-      font-weight: 600;
-      letter-spacing: .03em;
-      text-transform: uppercase;
-    }
-    .badge::before {
-      content: '';
-      width: 5px; height: 5px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
-    .badge-pending::before { background: var(--text-muted); }
-    .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(108,142,245,.22); }
-    .badge-approved::before { background: var(--accent); }
-    .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.22); }
-    .badge-renamed::before { background: var(--green); }
-    .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
-    .badge-skipped::before { background: var(--text-dim); }
-
-    .face-link {
-      display: inline-block;
-      margin-top: .25rem;
-      padding: .12rem .45rem;
-      background: rgba(251,191,36,.1);
-      border: 1px solid rgba(251,191,36,.25);
-      border-radius: 99px;
-      font-size: .65rem;
-      font-weight: 600;
-      color: var(--yellow);
-      text-decoration: none;
-    }
-    .face-link:hover { background: rgba(251,191,36,.2); }
-
-    /* ─── Checkbox ────────────────────────────── */
-    input[type="checkbox"] {
-      width: 14px;
-      height: 14px;
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-
-    /* ─── Batch action bar ────────────────────────────── */
-    .batch-bar {
-      position: sticky;
-      bottom: 1rem;
-      display: none;
-      align-items: center;
-      gap: .65rem;
-      padding: .65rem 1rem;
-      background: var(--surface-2);
-      border: 1px solid rgba(108,142,245,.3);
-      border-radius: var(--radius);
-      box-shadow: 0 8px 28px rgba(0,0,0,.5);
-      margin: 1rem 0;
-      z-index: 50;
-    }
-    .batch-bar.visible { display: flex; }
-    .batch-count {
-      font-size: .78rem;
-      font-weight: 600;
-      color: var(--accent);
-    }
-
-    /* ─── Pagination ────────────────────────────── */
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .8rem 1.15rem;
-      border-top: 1px solid var(--border);
-    }
-    .page-info {
-      font-size: .73rem;
-      color: var(--text-muted);
-      font-variant-numeric: tabular-nums;
-    }
-    .page-links { display: flex; gap: .35rem; }
-
-    /* ─── Rename section ────────────────────────────── */
-    .rename-section { margin-top: 1.4rem; }
-
-    .rename-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: .85rem 1.15rem;
-      background: var(--surface);
-      border: 1px solid rgba(52,211,153,.22);
-      border-radius: var(--radius);
-      cursor: pointer;
-    }
-    .rename-header.has-approved {
-      box-shadow: 0 0 18px rgba(52,211,153,.08);
-    }
-    .rename-header-left {
-      display: flex;
-      align-items: center;
-      gap: .6rem;
-    }
-    .rename-icon {
-      color: var(--green);
-    }
-    .rename-title-block {
-      display: flex;
-      flex-direction: column;
-      gap: .15rem;
-    }
-    .rename-title {
-      font-size: .85rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .rename-sub {
-      font-size: .7rem;
-      color: var(--text-muted);
-    }
-
-    .rename-log {
-      display: none;
-      margin-top: .65rem;
-      padding: .85rem 1.15rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      max-height: 320px;
-      overflow-y: auto;
-    }
-    .rename-log.open { display: block; }
-    .rename-log-row {
-      display: flex;
-      align-items: center;
-      gap: .6rem;
-      padding: .4rem 0;
-      border-bottom: 1px solid var(--border);
-      font-size: .72rem;
-      font-family: 'SF Mono', Menlo, monospace;
-    }
-    .rename-log-row:last-child { border: none; }
-    .rename-log-row .arrow {
-      color: var(--text-muted);
-      font-family: 'Inter', sans-serif;
-    }
-    .rename-log-row .from { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .rename-log-row .to { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-    /* ─── Empty state ────────────────────────────── */
-    .empty {
-      padding: 4rem 1.5rem;
-      text-align: center;
-      color: var(--text-dim);
-      font-size: .85rem;
-    }
-    .empty svg { display: block; margin: 0 auto .8rem; opacity: .5; }
-    .empty-title {
-      color: var(--text-muted);
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: .3rem;
-    }
-
-    /* ─── Toast ────────────────────────────── */
-    #toastContainer {
-      position: fixed;
-      bottom: 1.2rem;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 200;
-      display: flex;
-      flex-direction: column;
-      gap: .45rem;
-      pointer-events: none;
-    }
-    .toast {
-      padding: .6rem 1rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: .75rem;
-      color: var(--text);
-      box-shadow: 0 8px 28px rgba(0,0,0,.5);
-      pointer-events: auto;
-      animation: toast-in .25s ease;
-    }
-    .toast.ok { border-color: rgba(52,211,153,.4); color: var(--green); }
-    .toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
-    @keyframes toast-in {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ─── Version badge ─────────────────────── */
-    .version-badge {
-      position: fixed;
-      bottom: 1.1rem;
-      right: 1.25rem;
-      z-index: 200;
-      padding: .3rem .7rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-      font-size: .68rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-decoration: none;
-    }
-    .version-badge:hover { border-color: var(--border-hover); color: var(--text); }
-
-    /* ─── Animations ────────────────────────────── */
-    @keyframes fade-up {
-      from { opacity: 0; transform: translateY(7px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
-
-    @media (max-width: 1100px) {
-      .layout { grid-template-columns: 1fr; }
-      .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
-      .mount-card { min-width: 220px; flex: 1 1 220px; }
-      .stats-row { grid-template-columns: repeat(2, 1fr); }
-    }
-  </style>
-</head>
-<body>
-
-<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
-<div id="topBar">
-<header>
-  <div class="header-left">
-    <a href="/" class="logo">
-      <div class="logo-icon">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-      </div>
-      <span>Video Transcoder</span>
-    </a>
-    <nav class="nav-tabs">
-      <a href="/" class="nav-tab">Transcoder</a>
-      <a href="/library" class="nav-tab active">Library</a>
-      <a href="/performers" class="nav-tab">Performers</a>
-    </nav>
-  </div>
-  <div class="header-actions">
-    {% if selected_mount %}
-    <button class="btn btn-accent" onclick="scanMount()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-      Scan mount
-    </button>
-    <button class="btn" onclick="enqueueFaceRec()">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66c1.5-2.27 2.97-3.41 5-3.41s3.5 1.14 5 3.41"/>
-      </svg>
-      Face rec on unknowns
-    </button>
-    {% endif %}
-  </div>
-</header>
-</div>
-
-<!-- ═══ MAIN ════════════════════════════════════════════════ -->
+{% block content %}
 <main>
   <div class="layout">
 
@@ -856,10 +533,10 @@
             <span class="mount-total">{{ m.total }}</span>
           </div>
           <div class="mount-bars">
-            <div class="mount-bar-renamed" style="width: {{ pct_renamed }}%"></div>
+            <div class="mount-bar-renamed"  style="width: {{ pct_renamed }}%"></div>
             <div class="mount-bar-approved" style="width: {{ pct_approved }}%"></div>
-            <div class="mount-bar-pending" style="width: {{ pct_pending }}%"></div>
-            <div class="mount-bar-skipped" style="width: {{ pct_skipped }}%"></div>
+            <div class="mount-bar-pending"  style="width: {{ pct_pending }}%"></div>
+            <div class="mount-bar-skipped"  style="width: {{ pct_skipped }}%"></div>
           </div>
           <div class="mount-stats">
             <span class="ms-renamed">{{ m.renamed }} renamed</span>
@@ -885,8 +562,6 @@
           </div>
         </div>
       {% else %}
-
-        {% set approved_count = files | selectattr('status','equalto','approved') | list | length %}
 
         <!-- Stats row -->
         {% set sel_mount = (mounts | selectattr('name','equalto',selected_mount) | first) %}
@@ -915,11 +590,11 @@
         <!-- Action bar -->
         <div class="action-bar">
           <nav class="filter-pills">
-            <a href="/library?mount={{ selected_mount }}" class="filter-pill {{ 'active' if not status_filter else '' }}">All</a>
-            <a href="/library?mount={{ selected_mount }}&status=pending"  class="filter-pill {{ 'active' if status_filter == 'pending' else '' }}">Pending</a>
+            <a href="/library?mount={{ selected_mount }}"                 class="filter-pill {{ 'active' if not status_filter else '' }}">All</a>
+            <a href="/library?mount={{ selected_mount }}&status=pending"  class="filter-pill {{ 'active' if status_filter == 'pending'  else '' }}">Pending</a>
             <a href="/library?mount={{ selected_mount }}&status=approved" class="filter-pill {{ 'active' if status_filter == 'approved' else '' }}">Approved</a>
-            <a href="/library?mount={{ selected_mount }}&status=renamed"  class="filter-pill {{ 'active' if status_filter == 'renamed' else '' }}">Renamed</a>
-            <a href="/library?mount={{ selected_mount }}&status=skipped"  class="filter-pill {{ 'active' if status_filter == 'skipped' else '' }}">Skipped</a>
+            <a href="/library?mount={{ selected_mount }}&status=renamed"  class="filter-pill {{ 'active' if status_filter == 'renamed'  else '' }}">Renamed</a>
+            <a href="/library?mount={{ selected_mount }}&status=skipped"  class="filter-pill {{ 'active' if status_filter == 'skipped'  else '' }}">Skipped</a>
           </nav>
         </div>
 
@@ -933,15 +608,24 @@
           </div>
           <div class="tbl-wrap">
             <table id="filesTable">
+              <colgroup>
+                <col class="col-cb">
+                <col class="col-file">
+                <col class="col-proposed">
+                <col class="col-perf">
+                <col class="col-conf">
+                <col class="col-status">
+                <col class="col-actions">
+              </colgroup>
               <thead>
                 <tr>
-                  <th style="width:30px"><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
+                  <th><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
                   <th>Filename</th>
                   <th>Proposed name</th>
                   <th>Performers</th>
                   <th>Confidence</th>
                   <th>Status</th>
-                  <th style="text-align:right">Actions</th>
+                  <th class="th-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -950,16 +634,14 @@
                 {% set conf_cls = 'high' if conf >= 0.85 else ('mid' if conf >= 0.60 else 'low') %}
                 <tr data-id="{{ f.id }}" class="row-{{ f.status }}">
                   <td><input type="checkbox" class="row-cb" value="{{ f.id }}" onchange="updateBatchBar()"></td>
-                  <td class="td-file" title="{{ f.filename }}">
-                    {{ f.filename if f.filename|length <= 40 else f.filename[:37] ~ '…' }}
-                  </td>
+                  <td class="td-file" title="{{ f.filename }}">{{ f.filename }}</td>
                   <td class="td-proposed" title="{{ f.proposed_filename or '' }}">
                     {% if f.proposed_filename %}{{ f.proposed_filename }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
                   </td>
-                  <td class="td-performers">
+                  <td class="td-performers" title="{{ (f.performers or []) | join(', ') }}">
                     {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
                     {% if f.face_suggestions and f.face_suggestions > 0 %}
-                    <br><a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face suggestion{{ 's' if f.face_suggestions != 1 else '' }}</a>
+                    <a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face suggestion{{ 's' if f.face_suggestions != 1 else '' }}</a>
                     {% endif %}
                   </td>
                   <td>
@@ -969,22 +651,22 @@
                     </div>
                   </td>
                   <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
-                  <td class="td-actions" style="justify-content:flex-end">
-                    {% if f.status == 'pending' %}
-                    <button class="btn btn-sm btn-run" onclick="approveFile({{ f.id }})">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      Approve
-                    </button>
-                    <button class="btn btn-sm" onclick="skipFile({{ f.id }})">
-                      Skip
-                    </button>
-                    {% elif f.status == 'approved' %}
-                    <button class="btn btn-sm" onclick="skipFile({{ f.id }})">Unapprove</button>
-                    {% elif f.status == 'renamed' %}
-                    <span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>
-                    {% elif f.status == 'skipped' %}
-                    <button class="btn btn-sm" onclick="approveFile({{ f.id }})">Re-approve</button>
-                    {% endif %}
+                  <td class="td-actions">
+                    <span class="actions-inner">
+                      {% if f.status == 'pending' %}
+                      <button class="btn btn-sm btn-run" onclick="approveFile({{ f.id }})">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Approve
+                      </button>
+                      <button class="btn btn-sm" onclick="skipFile({{ f.id }})">Skip</button>
+                      {% elif f.status == 'approved' %}
+                      <button class="btn btn-sm" onclick="skipFile({{ f.id }})">Unapprove</button>
+                      {% elif f.status == 'renamed' %}
+                      <span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>
+                      {% elif f.status == 'skipped' %}
+                      <button class="btn btn-sm" onclick="approveFile({{ f.id }})">Re-approve</button>
+                      {% endif %}
+                    </span>
                   </td>
                 </tr>
               {% else %}
@@ -1072,7 +754,9 @@
     </section>
   </div>
 </main>
+{% endblock %}
 
+{% block body_end %}
 <div id="toastContainer"></div>
 
 <a class="version-badge" href="https://github.com/ReBaunana/video-transcoder/releases" target="_blank" rel="noopener">
@@ -1162,7 +846,7 @@
       badge.className = 'badge badge-' + status;
       badge.textContent = status;
     }
-    const actions = tr.querySelector('.td-actions');
+    const actions = tr.querySelector('.td-actions .actions-inner') || tr.querySelector('.td-actions');
     if (actions) {
       if (status === 'approved') {
         actions.innerHTML = `<button class="btn btn-sm" onclick="skipFile(${id})">Unapprove</button>`;
@@ -1229,6 +913,4 @@
     } catch (e) { toast('Rename failed: ' + e.message, 'err'); }
   }
 </script>
-
-</body>
-</html>
+{% endblock %}
