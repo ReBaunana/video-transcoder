@@ -278,6 +278,73 @@ def _run_face_enqueue(db_path: str) -> None:
                 pass
 
 
+def _run_auto_rename(db_path: str) -> None:
+    """Scheduled auto-approve and batch rename for ready files.
+
+    1. Files enriched by TPDB already have proposed_filename + approved status set
+       by the enrichment code. This step covers any stragglers (reviewed face
+       matches whose proposed_filename was built by accept_match).
+    2. Run execute_batch_rename for all approved files (up to 200 per run).
+    """
+    _log = logging.getLogger('scheduler.auto_rename')
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+
+        # Catch files that are 'reviewed' (face match accepted) but still lack
+        # proposed_filename — rebuild it and approve them.
+        stale = conn.execute(
+            """SELECT fc.id, fc.studio, fc.release_date, fc.title, fc.resolution, fc.path
+                 FROM file_curation fc
+                WHERE fc.status = 'reviewed'
+                  AND fc.proposed_filename IS NULL
+                  AND EXISTS (SELECT 1 FROM file_performer fp WHERE fp.file_curation_id = fc.id)"""
+        ).fetchall()
+        if stale:
+            from app.curation.tpdb import _rebuild_proposed_filename
+            import os as _os
+            for r in stale:
+                performer_names = [
+                    rr[0] for rr in conn.execute(
+                        """SELECT p.canonical_name FROM file_performer fp
+                             JOIN performer p ON p.id = fp.performer_id
+                            WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+                        (r['id'],),
+                    ).fetchall()
+                ]
+                if not performer_names:
+                    continue
+                ext = _os.path.splitext(str(r['path']))[1]
+                proposed = _rebuild_proposed_filename(
+                    studio=r['studio'], release_date=r['release_date'],
+                    title=r['title'], performers=performer_names,
+                    resolution=r['resolution'], ext=ext,
+                )
+                if proposed:
+                    conn.execute(
+                        "UPDATE file_curation SET proposed_filename=?, status='approved' WHERE id=?",
+                        (proposed, r['id']),
+                    )
+            conn.commit()
+            _log.info('auto_rename: rebuilt proposed_filename for %d reviewed files', len(stale))
+
+        from app.curation.rename import execute_batch_rename
+        result = execute_batch_rename(conn, mount=None, limit=200)
+        renamed = result.get('renamed', 0)
+        errors = result.get('errors', 0)
+        _log.info('auto_rename: renamed=%d errors=%d', renamed, errors)
+
+    except Exception:
+        _log.exception('_run_auto_rename crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 @app.on_event('shutdown')
 async def shutdown():
     """Stop background workers cleanly so the container shuts down quickly."""
@@ -306,6 +373,7 @@ def _start_scheduler():
         last_prune_ts = 0.0
         last_tpdb_batch_ts = 0.0    # fire on first tick
         last_face_enqueue_ts = 0.0  # fire on first tick
+        last_auto_rename_ts = 0.0   # fire on first tick
         db_path_str = str(DB_PATH)
 
         while True:
@@ -351,6 +419,16 @@ def _start_scheduler():
                     target=_run_face_enqueue,
                     args=(db_path_str,),
                     name='sched-face-enqueue',
+                    daemon=True,
+                ).start()
+
+            # Auto-approve and rename files with known performers every 30 min.
+            if (now_ts - last_auto_rename_ts) >= 30 * 60:
+                last_auto_rename_ts = now_ts
+                threading.Thread(
+                    target=_run_auto_rename,
+                    args=(db_path_str,),
+                    name='sched-auto-rename',
                     daemon=True,
                 ).start()
 

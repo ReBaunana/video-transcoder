@@ -409,7 +409,7 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
             UPDATE file_curation
                SET status = 'reviewed'
              WHERE id = ?
-               AND status = 'pending'
+               AND status NOT IN ('renamed', 'skipped', 'approved')
             """,
             (file_curation_id,),
         )
@@ -419,6 +419,40 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
         conn.rollback()
         log.exception("accept_match: failed match_id=%s", match_id)
         raise
+
+    # Rebuild proposed_filename with the newly accepted performer and
+    # auto-approve so the rename scheduler can pick it up immediately.
+    try:
+        fc_row = conn.execute(
+            "SELECT studio, release_date, title, resolution, path FROM file_curation WHERE id = ?",
+            (file_curation_id,),
+        ).fetchone()
+        performer_names = [
+            r[0] for r in conn.execute(
+                """SELECT p.canonical_name FROM file_performer fp
+                     JOIN performer p ON p.id = fp.performer_id
+                    WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+                (file_curation_id,),
+            ).fetchall()
+        ]
+        if fc_row and performer_names:
+            import os as _os
+            from app.curation.tpdb import _rebuild_proposed_filename
+            ext = _os.path.splitext(str(fc_row[4]))[1]
+            proposed = _rebuild_proposed_filename(
+                studio=fc_row[0], release_date=fc_row[1], title=fc_row[2],
+                performers=performer_names, resolution=fc_row[3], ext=ext,
+            )
+            if proposed:
+                conn.execute(
+                    """UPDATE file_curation SET proposed_filename = ?, status = 'approved'
+                        WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
+                    (proposed, file_curation_id),
+                )
+                conn.commit()
+                log.info("accept_match: auto-approved file_id=%s proposed=%r", file_curation_id, proposed)
+    except Exception:
+        log.exception("accept_match: proposed_filename rebuild failed file_id=%s", file_curation_id)
 
     log.info("accept_match: match_id=%s file_id=%s performer_id=%s",
              match_id, file_curation_id, performer_id)

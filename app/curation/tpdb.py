@@ -983,7 +983,12 @@ def enrich_file_from_tpdb(
             ext=_ext_from_path(str(row.get("path") or "")),
         )
         if proposed:
-            _update_file_row(conn, file_curation_id, {"proposed_filename": proposed})
+            # Auto-approve for rename when performers are identified — no manual
+            # step needed since TPDB match confidence is already gated upstream.
+            update: dict = {"proposed_filename": proposed}
+            if performer_names:
+                update["status"] = "approved"
+            _update_file_row(conn, file_curation_id, update)
         conn.commit()
     except Exception as exc:
         conn.rollback()
