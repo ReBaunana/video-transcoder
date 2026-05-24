@@ -344,9 +344,11 @@ def _run_auto_rename(db_path: str) -> None:
 
         from app.curation.rename import execute_batch_rename
         result = execute_batch_rename(conn, mount=None, limit=200)
-        renamed = result.get('renamed', 0)
-        errors = result.get('errors', 0)
-        _log.info('auto_rename: renamed=%d errors=%d', renamed, errors)
+        renamed = result.get('ok', 0)
+        errors = result.get('errors') or []
+        _log.info('auto_rename: renamed=%d failed=%d', renamed, result.get('failed', 0))
+        for e in errors[:5]:
+            _log.warning('auto_rename error: %s', e)
 
     except Exception:
         _log.exception('_run_auto_rename crashed')
