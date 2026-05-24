@@ -35,6 +35,7 @@ try:
     from app.curation.extractor import (  # type: ignore
         ParseResult,
         build_target_filename,
+        parse_filename,
     )
 except Exception:  # pragma: no cover — import-path fallback for tests
     import sys as _sys
@@ -48,6 +49,7 @@ except Exception:  # pragma: no cover — import-path fallback for tests
     from curation.extractor import (  # type: ignore
         ParseResult,
         build_target_filename,
+        parse_filename,
     )
 
 
@@ -195,8 +197,6 @@ def search_scenes(
     # ``query`` is the canonical parameter the API uses; include both for safety
     # since older deployments accepted ``q``.
     params["query"] = query
-    if site:
-        params["parse"] = site
     try:
         payload = _get_json("/scenes", params)
     except TPDBError as exc:
@@ -551,6 +551,77 @@ def _rebuild_proposed_filename(
 
 
 # ---------------------------------------------------------------------------
+# Query-strategy builder
+# ---------------------------------------------------------------------------
+
+_QUALITY_NOISE_RE = re.compile(
+    r"\b(?:2160p|1080p|1080i|720p|720i|480p|360p"
+    r"|4k|uhd|sd|hd|fhd|xxx"
+    r"|webrip|web-?dl|webdl|bluray|bdrip|dvdrip|hdrip"
+    r"|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|divx"
+    r"|aac|mp3|flac|ac3|dts)\b",
+    re.IGNORECASE,
+)
+_BRACKETED_RE = re.compile(r"[\[\(][^\]\)]*[\]\)]")
+_WS_COLLAPSE_RE = re.compile(r"\s+")
+
+
+def _clean_query(raw: str | None) -> str:
+    """Strip bracketed junk, quality/codec noise, and separators from a query candidate."""
+    if not raw:
+        return ""
+    s = _BRACKETED_RE.sub(" ", str(raw))
+    s = re.sub(r"[._\-]+", " ", s)
+    s = _QUALITY_NOISE_RE.sub(" ", s)
+    s = _WS_COLLAPSE_RE.sub(" ", s).strip()
+    return s
+
+
+def _build_query_strategies(row: dict) -> list[str]:
+    """Return ordered TPDB search queries to try, best-signal first.
+
+    1. Cleaned DB title
+    2. First performer name from the file_performer join
+    3. First performer name extracted directly from the filename
+    4. Cleaned filename stem
+    """
+    queries: list[str] = []
+    seen: set[str] = set()
+
+    def _push(candidate: str | None) -> None:
+        cleaned = _clean_query(candidate)
+        if not cleaned:
+            return
+        key = cleaned.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        queries.append(cleaned)
+
+    _push(row.get("title"))
+
+    performers = row.get("performers") or []
+    if isinstance(performers, str):
+        performers = [p.strip() for p in performers.split(",") if p.strip()]
+    if performers:
+        _push(performers[0])
+
+    path = row.get("path")
+    if path:
+        try:
+            parsed = parse_filename(Path(str(path)).name)
+        except Exception:
+            parsed = None
+        if parsed and parsed.performers:
+            _push(parsed.performers[0])
+
+    if path:
+        _push(Path(str(path)).stem)
+
+    return queries
+
+
+# ---------------------------------------------------------------------------
 # Main enrichment entry point
 # ---------------------------------------------------------------------------
 
@@ -588,11 +659,9 @@ def enrich_file_from_tpdb(
             "score": 0.0,
         }
 
-    # Build search query — prefer the parsed title, fall back to the filename stem.
-    query = (row.get("title") or "").strip()
-    if not query and row.get("path"):
-        query = Path(str(row["path"])).stem
-    if not query:
+    # Build ordered search strategies and try each until we get candidates.
+    queries = _build_query_strategies(row)
+    if not queries:
         return {
             "applied": False,
             "ok": True,
@@ -603,12 +672,24 @@ def enrich_file_from_tpdb(
             "error": "no_query",
         }
 
-    scenes = search_scenes(query, site=row.get("studio"), limit=5)
     scored: list[tuple[float, dict]] = []
-    for sc in scenes:
-        s = score_scene_match(sc, row)
-        if s >= MIN_CANDIDATE_SCORE:
-            scored.append((s, sc))
+    seen_scene_ids: set[str] = set()
+    for query in queries:
+        scenes = search_scenes(query, limit=5)
+        if not scenes:
+            log.debug("enrich: no results for query=%r id=%s", query, file_curation_id)
+            continue
+        for sc in scenes:
+            sid = sc.get("id") or sc.get("_id")
+            sid_key = str(sid) if sid is not None else json.dumps(sc, sort_keys=True)[:64]
+            if sid_key in seen_scene_ids:
+                continue
+            seen_scene_ids.add(sid_key)
+            s = score_scene_match(sc, row)
+            if s >= MIN_CANDIDATE_SCORE:
+                scored.append((s, sc))
+        if scored:
+            break
     scored.sort(key=lambda t: t[0], reverse=True)
 
     # Always stamp tpdb_lookup_at so we don't keep re-searching for no-result files.
