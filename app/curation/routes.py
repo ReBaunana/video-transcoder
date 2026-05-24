@@ -200,12 +200,11 @@ def _enrich_files(conn: sqlite3.Connection, files: list[dict]) -> list[dict]:
     for f in files:
         fid = int(f['id'])
         perf_list = by_file_perf.get(fid, [])
-        # Template renders ``{{ f.performers | join(', ') }}`` so we expose the
-        # names as a list of strings. The richer dicts (with confidence, slug)
-        # live under ``performer_details`` for any future use.
         f['performers'] = [p['name'] for p in perf_list if p.get('name')]
         f['performer_details'] = perf_list
         f['face_suggestions'] = by_file_sugg.get(fid, 0)
+        # Template uses f.filename (basename); the DB row has f.path (full path).
+        f['filename'] = Path(f['path']).name if f.get('path') else ''
     return files
 
 
