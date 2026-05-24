@@ -9,8 +9,8 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
-import uuid
 from pathlib import Path
 
 import cv2
@@ -35,7 +35,13 @@ MAX_EMBEDDINGS_PER_FILE = 15
 REFERENCE_READY_MIN = 8
 
 FFMPEG_BIN = os.environ.get("FFMPEG_BIN", "ffmpeg")
-FFMPEG_TIMEOUT_SEC = 20
+FFMPEG_TIMEOUT_SEC = 120  # whole-window batch extract; was 20s per single frame
+
+# Serialize GPU access across parallel worker threads.
+# InsightFace's app.get() is NOT safe to call from multiple threads on the
+# same ONNX session — concurrent CUDA inference corrupts state. CPU detection
+# is also not guaranteed thread-safe inside FaceAnalysis' Python wrappers.
+_gpu_lock = threading.Lock()
 
 
 def ensure_thumb_dir() -> None:
@@ -47,84 +53,123 @@ def ensure_thumb_dir() -> None:
         log.debug("ensure_thumb_dir: chmod skipped (not owner)")
 
 
-def _sample_timestamps(duration_sec: float) -> list[float]:
-    """Uniform timestamps within the middle 87% of the clip."""
+def _sample_window(duration_sec: float) -> tuple[float, float, int]:
+    """Return (start_t, end_t, n_frames) for the middle 87% sampling window.
+
+    Returns (0.0, 0.0, 0) if the clip is too short to sample.
+    """
     if duration_sec <= 1.0:
-        return []
+        return (0.0, 0.0, 0)
     start = duration_sec * 0.08
     end = duration_sec * 0.95
     if end <= start:
-        return []
+        return (0.0, 0.0, 0)
     n = max(40, min(60, int(duration_sec / 30)))
-    if n <= 1:
+    return (start, end, n)
+
+
+def _sample_timestamps(duration_sec: float) -> list[float]:
+    """Uniform timestamps within the middle 87% of the clip.
+
+    Kept for compatibility / tests. The extractor itself uses _sample_window.
+    """
+    start, end, n = _sample_window(duration_sec)
+    if n <= 0:
+        return []
+    if n == 1:
         return [(start + end) / 2.0]
     step = (end - start) / (n - 1)
     return [start + i * step for i in range(n)]
 
 
 def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
-    """Extract frames from video using ffmpeg subprocess.
+    """Extract frames from video using a single batched ffmpeg subprocess.
+
+    Replaces the previous per-timestamp loop (one ffmpeg per frame) with one
+    decode pass over the sampling window, using fps=N/window to emit N evenly
+    spaced frames. 40-60x fewer subprocess spawns for a typical video.
 
     Returns list of (timestamp_sec, BGR image). Empty list on any error.
     """
-    timestamps = _sample_timestamps(duration_sec)
-    if not timestamps:
+    start_t, end_t, n_frames = _sample_window(duration_sec)
+    if n_frames <= 0:
         return []
 
     if not Path(video_path).exists():
         log.warning("extract_frames: video missing path=%s", video_path)
         return []
 
+    window = end_t - start_t
+    if window <= 0.0:
+        return []
+
+    # fps filter emits frames at a constant rate; N/window gives exactly N
+    # frames across the window (modulo source frame rounding).
+    fps = n_frames / window
+
     tmp_dir = Path(tempfile.mkdtemp(prefix="vt_frames_"))
-    out: list[tuple[float, np.ndarray]] = []
     try:
-        for t in timestamps:
-            frame_path = tmp_dir / f"vt_frame_{uuid.uuid4().hex}.jpg"
-            cmd = [
-                FFMPEG_BIN,
-                "-nostdin",
-                "-loglevel", "error",
-                "-ss", f"{t:.3f}",
-                "-i", video_path,
-                "-frames:v", "1",
-                "-q:v", "3",
-                "-vf", "scale='min(1280,iw)':-2",
-                "-y",
-                str(frame_path),
-            ]
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    timeout=FFMPEG_TIMEOUT_SEC,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired:
-                log.warning("extract_frames: ffmpeg timeout t=%.2f path=%s", t, video_path)
-                continue
-            except FileNotFoundError:
-                log.error("extract_frames: ffmpeg binary not found (%s)", FFMPEG_BIN)
-                return []
+        # Input -ss before -i = fast keyframe seek to window start.
+        # -to is an output option referring to input PTS when used with input -ss
+        # in modern ffmpeg; safer to use -t with the explicit window length.
+        cmd = [
+            FFMPEG_BIN,
+            "-nostdin",
+            "-loglevel", "error",
+            "-ss", f"{start_t:.3f}",
+            "-i", video_path,
+            "-t", f"{window:.3f}",
+            "-vf", f"fps={fps:.6f},scale='min(1280,iw)':-2",
+            "-vsync", "vfr",
+            "-q:v", "3",
+            "-y",
+            str(tmp_dir / "frame_%05d.jpg"),
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=FFMPEG_TIMEOUT_SEC,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            log.warning(
+                "extract_frames: ffmpeg batch timeout (%ds) path=%s",
+                FFMPEG_TIMEOUT_SEC, video_path,
+            )
+            return []
+        except FileNotFoundError:
+            log.error("extract_frames: ffmpeg binary not found (%s)", FFMPEG_BIN)
+            return []
 
-            if proc.returncode != 0 or not frame_path.exists():
-                log.debug(
-                    "extract_frames: ffmpeg rc=%s t=%.2f stderr=%s",
-                    proc.returncode, t, proc.stderr[:200] if proc.stderr else b"",
-                )
-                continue
+        if proc.returncode != 0:
+            log.debug(
+                "extract_frames: ffmpeg rc=%s stderr=%s",
+                proc.returncode, proc.stderr[:300] if proc.stderr else b"",
+            )
+            # No early return — we may still have partial output; fall through.
 
-            img = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
+        # Collect frames in numeric order and reconstruct timestamps as
+        # start_t + i * (window / n_frames) per the design spec.
+        frame_files = sorted(tmp_dir.glob("frame_*.jpg"))
+        if not frame_files:
+            return []
+
+        step = window / n_frames
+        out: list[tuple[float, np.ndarray]] = []
+        for i, fp in enumerate(frame_files):
+            img = cv2.imread(str(fp), cv2.IMREAD_COLOR)
             if img is None:
-                log.debug("extract_frames: cv2 failed to decode %s", frame_path)
+                log.debug("extract_frames: cv2 failed to decode %s", fp)
                 continue
+            t = start_t + i * step
             out.append((t, img))
+        return out
     except Exception:
         log.exception("extract_frames: unexpected failure path=%s", video_path)
         return []
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    return out
 
 
 def detect_faces(img: np.ndarray) -> list[dict]:
@@ -140,7 +185,10 @@ def detect_faces(img: np.ndarray) -> list[dict]:
         return []
 
     try:
-        faces = app.get(img)
+        # Serialize ONNX session calls across worker threads — concurrent
+        # CUDA inference on the same session corrupts state.
+        with _gpu_lock:
+            faces = app.get(img)
     except Exception:
         log.exception("detect_faces: insightface .get() failed")
         return []

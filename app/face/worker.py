@@ -16,51 +16,73 @@ from app.face.model import reset_face_app
 log = logging.getLogger(__name__)
 
 _stop_event = threading.Event()
-_worker_thread: threading.Thread | None = None
+_worker_threads: list[threading.Thread] = []
 _stats_lock = threading.Lock()
 _stats = {"done": 0, "failed": 0, "started_at": 0}
+
+# Total jobs processed across all worker threads since the last VRAM reset.
+# Protected by _stats_lock together with the reset trigger.
+_jobs_since_reset = 0
 
 POLL_INTERVAL_SEC = 3.0
 MAX_ATTEMPTS = 3
 RESET_AFTER_N_JOBS = 50  # mitigate ONNX VRAM fragmentation
+DEFAULT_WORKERS = 2  # CPU extract + GPU detect overlap nicely with 2 threads
 
 
 # --------------------------------------------------------------------------- #
 # Public API                                                                  #
 # --------------------------------------------------------------------------- #
 
-def start_worker(conn_factory: Callable[[], sqlite3.Connection]) -> None:
-    """Start the background worker thread.
+def start_worker(
+    conn_factory: Callable[[], sqlite3.Connection],
+    n_workers: int = DEFAULT_WORKERS,
+) -> None:
+    """Start N background worker threads sharing the same job queue.
 
-    conn_factory: callable that returns a fresh sqlite3.Connection
-    (SQLite connections are not safe to share across threads).
+    Each thread polls _claim_next_job, which is race-safe at the DB level
+    (UPDATE ... WHERE id = (SELECT ... LIMIT 1) serializes claims).
+
+    conn_factory: callable that returns a fresh sqlite3.Connection.
+    Each thread gets its own connection — SQLite connections are not safe
+    to share across threads.
     """
-    global _worker_thread
-    if _worker_thread is not None and _worker_thread.is_alive():
-        log.debug("start_worker: already running")
+    global _worker_threads
+    # Already running? Don't double-start.
+    if any(t.is_alive() for t in _worker_threads):
+        log.debug("start_worker: already running (%d threads)", len(_worker_threads))
         return
+
+    n = max(1, int(n_workers))
     _stop_event.clear()
     with _stats_lock:
         _stats["started_at"] = int(time.time())
-    _worker_thread = threading.Thread(
-        target=_worker_loop,
-        args=(conn_factory,),
-        name="face-worker",
-        daemon=True,
-    )
-    _worker_thread.start()
-    log.info("Face worker started")
+
+    _worker_threads = []
+    for i in range(n):
+        t = threading.Thread(
+            target=_worker_loop,
+            args=(conn_factory, i),
+            name=f"face-worker-{i}",
+            daemon=True,
+        )
+        t.start()
+        _worker_threads.append(t)
+    log.info("Face worker started (%d threads)", n)
 
 
 def stop_worker() -> None:
-    """Signal the worker to exit at the next iteration."""
+    """Signal all worker threads to exit at the next poll iteration."""
     _stop_event.set()
-    log.info("Face worker stop requested")
+    log.info("Face worker stop requested (%d threads)", len(_worker_threads))
 
 
 def get_worker_status() -> dict:
     """Return current worker stats. Queue counts are best-effort (no conn here)."""
-    running = bool(_worker_thread and _worker_thread.is_alive() and not _stop_event.is_set())
+    running = (
+        any(t.is_alive() for t in _worker_threads)
+        and not _stop_event.is_set()
+    )
     with _stats_lock:
         return {
             "running": running,
@@ -479,21 +501,31 @@ def _probe_duration(path: str) -> float | None:
         return None
 
 
-def _worker_loop(conn_factory: Callable[[], sqlite3.Connection]) -> None:
-    """Main worker loop."""
-    log.info("face-worker loop entered")
-    jobs_since_reset = 0
+def _worker_loop(
+    conn_factory: Callable[[], sqlite3.Connection],
+    worker_idx: int = 0,
+) -> None:
+    """Main worker loop. One instance per worker thread.
 
-    # Warm the index once.
-    try:
-        conn = conn_factory()
+    Each thread keeps its own SQLite connection per job (re-opened on every
+    poll iteration, matching the original single-threaded behavior).
+    The VRAM-defrag reset counter is shared across all threads via
+    _stats_lock to honor the global RESET_AFTER_N_JOBS budget.
+    """
+    global _jobs_since_reset
+    log.info("face-worker loop entered (idx=%d)", worker_idx)
+
+    # Only one thread should warm the index; the rest skip it.
+    if worker_idx == 0:
         try:
-            matcher_mod.get_index().load(conn)
-            refresh_queue_count(conn)
-        finally:
-            conn.close()
-    except Exception:
-        log.exception("face-worker: initial index load failed")
+            conn = conn_factory()
+            try:
+                matcher_mod.get_index().load(conn)
+                refresh_queue_count(conn)
+            finally:
+                conn.close()
+        except Exception:
+            log.exception("face-worker: initial index load failed")
 
     while not _stop_event.is_set():
         conn = None
@@ -522,34 +554,48 @@ def _worker_loop(conn_factory: Callable[[], sqlite3.Connection]) -> None:
                 with _stats_lock:
                     _stats["done"] = _stats.get("done", 0) + 1
                 log.info(
-                    "face-worker: job done id=%s type=%s file_id=%s",
-                    job_id, job["job_type"], job["file_curation_id"],
+                    "face-worker[%d]: job done id=%s type=%s file_id=%s",
+                    worker_idx, job_id, job["job_type"], job["file_curation_id"],
                 )
             except Exception as exc:
                 log.exception(
-                    "face-worker: job FAILED id=%s type=%s file_id=%s",
-                    job_id, job.get("job_type"), job.get("file_curation_id"),
+                    "face-worker[%d]: job FAILED id=%s type=%s file_id=%s",
+                    worker_idx, job_id, job.get("job_type"), job.get("file_curation_id"),
                 )
                 _mark_failed(conn, job_id, int(job.get("attempts", 1)), repr(exc))
                 with _stats_lock:
                     _stats["failed"] = _stats.get("failed", 0) + 1
 
             refresh_queue_count(conn)
-            jobs_since_reset += 1
 
-            if jobs_since_reset >= RESET_AFTER_N_JOBS:
+            # Shared reset counter across all threads. One thread (whichever
+            # crosses the threshold first) performs the reset; the rest see
+            # the counter back at 0 on the next iteration.
+            should_reset = False
+            with _stats_lock:
+                _jobs_since_reset += 1
+                if _jobs_since_reset >= RESET_AFTER_N_JOBS:
+                    should_reset = True
+                    _jobs_since_reset = 0
+
+            if should_reset:
                 log.info(
-                    "face-worker: resetting InsightFace after %d jobs (VRAM defrag)",
-                    jobs_since_reset,
+                    "face-worker[%d]: resetting InsightFace after %d total jobs (VRAM defrag)",
+                    worker_idx, RESET_AFTER_N_JOBS,
                 )
+                # Hold the GPU lock so no other thread enters app.get() while
+                # the singleton is being torn down and reloaded.
                 try:
-                    reset_face_app()
+                    with extractor_mod._gpu_lock:
+                        reset_face_app()
                 except Exception:
-                    log.exception("face-worker: reset_face_app failed")
-                jobs_since_reset = 0
+                    log.exception("face-worker[%d]: reset_face_app failed", worker_idx)
 
         except Exception:
-            log.exception("face-worker: unexpected loop error; sleeping briefly")
+            log.exception(
+                "face-worker[%d]: unexpected loop error; sleeping briefly",
+                worker_idx,
+            )
             time.sleep(1.0)
         finally:
             if conn is not None:
@@ -558,4 +604,4 @@ def _worker_loop(conn_factory: Callable[[], sqlite3.Connection]) -> None:
                 except Exception:
                     pass
 
-    log.info("face-worker loop exiting")
+    log.info("face-worker loop exiting (idx=%d)", worker_idx)

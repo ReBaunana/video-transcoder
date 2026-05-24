@@ -41,10 +41,27 @@ def get_face_app():
                 try:
                     if not _use_cuda:
                         raise RuntimeError("CUDAExecutionProvider not in available providers")
+                    # Explicit CUDA provider options:
+                    # - kNextPowerOfTwo arena reduces fragmentation on 4GB VRAM
+                    # - EXHAUSTIVE cuDNN search picks the fastest conv algo
+                    #   (one-time cost per session, amortized over many frames)
+                    # - do_copy_in_default_stream avoids stream sync surprises
+                    cuda_providers = [
+                        (
+                            "CUDAExecutionProvider",
+                            {
+                                "device_id": 0,
+                                "arena_extend_strategy": "kNextPowerOfTwo",
+                                "cudnn_conv_algo_search": "EXHAUSTIVE",
+                                "do_copy_in_default_stream": True,
+                            },
+                        ),
+                        "CPUExecutionProvider",
+                    ]
                     fa = FaceAnalysis(
                         name="buffalo_l",
                         root=root,
-                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                        providers=cuda_providers,
                     )
                     # det_size 640x640 keeps VRAM modest on the 4GB 3050 Ti.
                     fa.prepare(ctx_id=0, det_size=(640, 640))
