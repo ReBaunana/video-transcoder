@@ -492,13 +492,17 @@ def _replace_file_performers(
     conn: sqlite3.Connection,
     file_curation_id: int,
     performer_names: Iterable[str],
-) -> list[int]:
-    """Wipe auto-source links and re-create them in order. Returns performer ids."""
+) -> list[tuple[int, str]]:
+    """Wipe auto-source links and re-create them in order.
+
+    Returns a list of ``(performer_id, canonical_name)`` pairs for the
+    performers that were successfully linked.
+    """
     conn.execute(
         "DELETE FROM file_performer WHERE file_curation_id = ? AND source IN ('auto', 'tpdb')",
         (int(file_curation_id),),
     )
-    ids: list[int] = []
+    ids: list[tuple[int, str]] = []
     for position, name in enumerate(performer_names):
         name = (name or "").strip()
         if not name:
@@ -507,7 +511,7 @@ def _replace_file_performers(
             pid = get_or_create_performer(conn, name)
         except Exception:
             continue
-        ids.append(pid)
+        ids.append((pid, name))
         conn.execute(
             """
             INSERT OR IGNORE INTO file_performer
@@ -517,6 +521,149 @@ def _replace_file_performers(
             (int(file_curation_id), pid, position),
         )
     return ids
+
+
+def _extract_performer_image_urls(p: dict) -> list[str]:
+    """Pull face/image/thumbnail/poster URLs from a TPDB performer dict.
+
+    Also checks the nested ``parent`` block (TPDB scene payloads nest the
+    canonical performer there). De-duplicates while preserving priority order.
+    """
+    urls: list[str] = []
+    seen: set[str] = set()
+    parent = p.get("parent") if isinstance(p.get("parent"), dict) else {}
+    for src in (p, parent):
+        if not isinstance(src, dict):
+            continue
+        for key in ("face", "image", "thumbnail", "poster"):
+            val = src.get(key)
+            if isinstance(val, str) and val and val not in seen:
+                seen.add(val)
+                urls.append(val)
+    return urls
+
+
+def _auto_seed_performers_from_tpdb(
+    conn: sqlite3.Connection,
+    id_name_pairs: list[tuple[int, str]],
+    scene_performers: list[dict],
+) -> None:
+    """Download TPDB profile images and store face embeddings for new performers.
+
+    Silently skips performers that already have embeddings. Degrades gracefully
+    when InsightFace / Pillow / numpy are not installed.
+    """
+    if not id_name_pairs:
+        return
+    try:
+        from app.face.model import get_face_app, is_face_rec_available, embed_to_blob  # type: ignore
+        from app.face.extractor import _gpu_lock  # type: ignore
+        import numpy as np  # type: ignore
+        import io
+        from PIL import Image  # type: ignore
+    except ImportError:
+        log.debug("_auto_seed_performers_from_tpdb: face stack not available, skipping")
+        return
+
+    if not is_face_rec_available():
+        return
+
+    try:
+        face_app = get_face_app()
+    except Exception as exc:
+        log.warning("_auto_seed_performers_from_tpdb: get_face_app failed: %s", exc)
+        return
+
+    # Build name→TPDB-dict map from the scene payload (already fetched, no extra requests)
+    tpdb_by_name: dict[str, dict] = {}
+    for p in scene_performers:
+        if not isinstance(p, dict):
+            continue
+        parent = p.get("parent") if isinstance(p.get("parent"), dict) else {}
+        name = (parent.get("name") or parent.get("full_name") or p.get("name") or "").strip()
+        if name:
+            tpdb_by_name[_norm(name)] = p
+
+    for performer_id, canonical_name in id_name_pairs:
+        try:
+            row = conn.execute(
+                "SELECT embedding_count FROM performer WHERE id = ?",
+                (performer_id,),
+            ).fetchone()
+            if row and int(row[0] or 0) > 0:
+                continue  # already has embeddings
+
+            # Find TPDB data: prefer scene payload, fall back to API search
+            tpdb_data = tpdb_by_name.get(_norm(canonical_name))
+            if not tpdb_data:
+                results = search_performers(canonical_name, limit=3)
+                tpdb_data = results[0] if results else None
+
+            if not tpdb_data:
+                log.debug("_auto_seed: no TPDB data for %r", canonical_name)
+                continue
+
+            urls = _extract_performer_image_urls(tpdb_data)
+            seeded = False
+            for url in urls[:3]:
+                raw = download_face_image(url)
+                if not raw:
+                    continue
+                try:
+                    img = Image.open(io.BytesIO(raw)).convert("RGB")
+                    arr = np.array(img)
+                    with _gpu_lock:
+                        faces = face_app.get(arr)
+                except Exception as exc:
+                    log.debug("_auto_seed: image decode/detect failed url=%s: %s", url, exc)
+                    continue
+                if not faces:
+                    continue
+
+                def _area(f):
+                    x1, y1, x2, y2 = f.bbox[:4]
+                    return max(0.0, float((x2 - x1) * (y2 - y1)))
+
+                face = max(faces, key=_area)
+                embedding = getattr(face, "normed_embedding", None) or getattr(face, "embedding", None)
+                if embedding is None:
+                    continue
+
+                blob = embed_to_blob(np.asarray(embedding, dtype=np.float32))
+                det_score = float(getattr(face, "det_score", 0.0) or 0.0)
+                bbox_json = json.dumps([round(float(v), 2) for v in face.bbox[:4]])
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT INTO face_embedding
+                            (performer_id, file_curation_id, source, embedding,
+                             det_score, bbox, frame_time_sec, thumbnail_path, quality_score)
+                        VALUES (?, NULL, 'tpdb_seed', ?, ?, ?, NULL, NULL, NULL)
+                        """,
+                        (performer_id, blob, det_score, bbox_json),
+                    )
+                    conn.execute(
+                        """
+                        UPDATE performer
+                           SET embedding_count = embedding_count + 1,
+                               is_reference_ready = 1,
+                               profile_thumb = CASE WHEN profile_thumb IS NULL THEN ? ELSE profile_thumb END
+                         WHERE id = ?
+                        """,
+                        (url, performer_id),
+                    )
+                log.info(
+                    "_auto_seed: seeded performer_id=%s name=%r from %s",
+                    performer_id, canonical_name, url,
+                )
+                seeded = True
+                break
+
+            if not seeded:
+                log.debug("_auto_seed: no face found for %r", canonical_name)
+
+        except Exception:
+            log.exception("_auto_seed_performers_from_tpdb: failed performer_id=%s", performer_id)
 
 
 def _ext_from_path(path: str) -> str:
@@ -688,7 +835,7 @@ def enrich_file_from_tpdb(
             s = score_scene_match(sc, row)
             if s >= MIN_CANDIDATE_SCORE:
                 scored.append((s, sc))
-        if scored:
+        if any(s >= AUTO_APPLY_SCORE for s, _ in scored):
             break
     scored.sort(key=lambda t: t[0], reverse=True)
 
@@ -753,6 +900,7 @@ def enrich_file_from_tpdb(
         if name and name not in performer_names:
             performer_names.append(name)
 
+    id_name_pairs: list[tuple[int, str]] = []
     try:
         _update_file_row(
             conn,
@@ -766,7 +914,7 @@ def enrich_file_from_tpdb(
             },
         )
         if performer_names:
-            _replace_file_performers(conn, file_curation_id, performer_names)
+            id_name_pairs = _replace_file_performers(conn, file_curation_id, performer_names)
 
         proposed = _rebuild_proposed_filename(
             studio=new_studio,
@@ -791,6 +939,14 @@ def enrich_file_from_tpdb(
             "candidates": [_shape_scene_summary(sc, sc_score) for sc_score, sc in scored[1:4]],
             "score": float(best_score),
         }
+
+    # Auto-seed face embeddings for newly created performers so face
+    # recognition can find them in other videos without manual steps.
+    # Must run AFTER conn.commit() — opens its own `with conn:` transactions.
+    if id_name_pairs:
+        _auto_seed_performers_from_tpdb(
+            conn, id_name_pairs, best_scene.get("performers") or []
+        )
 
     return {
         "applied": True,

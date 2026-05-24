@@ -240,18 +240,18 @@ async def performers_detail(performer_id: int, request: Request):
 
     match_rows = conn.execute(
         """
-        SELECT fm.id              AS match_id,
+        SELECT fm.id               AS match_id,
                fm.file_curation_id AS file_id,
-               fm.score           AS score,
-               fm.status          AS status,
-               fm.thumb_path      AS thumb_path,
-               fc.original_path   AS original_path,
-               fc.original_name   AS original_name
+               fm.similarity       AS score,
+               fm.status           AS status,
+               fe.thumbnail_path   AS thumb_path,
+               fc.path             AS original_path
           FROM face_match_result fm
           JOIN file_curation fc ON fc.id = fm.file_curation_id
+          LEFT JOIN face_embedding fe ON fe.id = fm.sample_thumb_id
          WHERE fm.performer_id = ?
            AND fm.status = 'pending'
-         ORDER BY fm.score DESC
+         ORDER BY fm.similarity DESC
          LIMIT 200
         """,
         (performer_id,),
@@ -357,8 +357,8 @@ async def performers_merge(request: Request):
         # Move file_performer links — drop dups via INSERT OR IGNORE then DELETE source.
         conn.execute(
             """
-            INSERT OR IGNORE INTO file_performer (file_curation_id, performer_id, confidence, source)
-            SELECT file_curation_id, ?, confidence, source
+            INSERT OR IGNORE INTO file_performer (file_curation_id, performer_id, position, source)
+            SELECT file_curation_id, ?, position, source
               FROM file_performer WHERE performer_id = ?
             """,
             (target_id, source_id),
@@ -458,7 +458,9 @@ async def performers_upload_photo(
                 raise RuntimeError('no face_app accessor available')
             app_obj = get_app()
 
-        faces = app_obj.get(arr)
+        from app.face.extractor import _gpu_lock
+        with _gpu_lock:
+            faces = app_obj.get(arr)
     except ImportError as exc:
         log.warning('face stack import failed: %s', exc)
         return JSONResponse({'ok': False, 'error': 'face_rec_unavailable'})
@@ -483,6 +485,14 @@ async def performers_upload_photo(
 
     embedding_bytes = np.asarray(embedding, dtype='float32').tobytes()
 
+    bbox_json = '[]'
+    try:
+        x1, y1, x2, y2 = (int(v) for v in face.bbox)
+        bbox_json = json.dumps([x1, y1, x2, y2])
+    except Exception:
+        pass
+    det = float(getattr(face, 'det_score', 0.0) or 0.0)
+
     # Persist a thumb so the UI has something to show.
     try:
         FACE_THUMB_DIR.mkdir(parents=True, exist_ok=True)
@@ -501,10 +511,11 @@ async def performers_upload_photo(
     with conn:
         cur = conn.execute(
             """
-            INSERT INTO face_embedding (performer_id, embedding, source, thumb_path)
-            VALUES (?, ?, 'seed', ?)
+            INSERT INTO face_embedding
+                (performer_id, embedding, source, thumbnail_path, det_score, bbox)
+            VALUES (?, ?, 'seed', ?, ?, ?)
             """,
-            (performer_id, embedding_bytes, thumb_url),
+            (performer_id, embedding_bytes, thumb_url, det, bbox_json),
         )
         embedding_id = cur.lastrowid
         if thumb_url:
@@ -584,8 +595,8 @@ async def performers_confirm_video(
             conn.execute(
                 """
                 INSERT OR IGNORE INTO file_performer
-                    (file_curation_id, performer_id, confidence, source)
-                VALUES (?, ?, 1.0, 'manual')
+                    (file_curation_id, performer_id, position, source)
+                VALUES (?, ?, 0, 'manual')
                 """,
                 (file_id, performer_id),
             )
@@ -795,7 +806,9 @@ def _seed_performer_from_tpdb_sync(
             last_error = f'decode_failed: {exc}'
             continue
         try:
-            faces = face_app.get(arr)
+            from app.face.extractor import _gpu_lock
+            with _gpu_lock:
+                faces = face_app.get(arr)
         except Exception as exc:
             last_error = f'detection_failed: {exc}'
             continue
