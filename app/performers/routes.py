@@ -590,6 +590,12 @@ async def performers_confirm_video(
                 (file_id, performer_id),
             )
 
+    # Auto-seed thumbnail so the performer photo fills in without manual action.
+    try:
+        face_worker.enqueue_seed_for_performer(conn, performer_id)
+    except Exception as exc:
+        log.warning('auto enqueue_seed_for_performer failed performer_id=%s: %s', performer_id, exc)
+
     return JSONResponse({'ok': True})
 
 
@@ -667,6 +673,12 @@ async def performers_face_match_accept(
     except Exception as exc:
         log.exception('accept_match failed match_id=%s', match_id)
         return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
+    # Auto-seed: extract a face thumbnail from the accepted video so the
+    # performer photo appears without needing a manual "Enqueue scan" click.
+    try:
+        face_worker.enqueue_seed_for_performer(conn, performer_id)
+    except Exception as exc:
+        log.warning('auto enqueue_seed_for_performer failed performer_id=%s: %s', performer_id, exc)
     return JSONResponse({'ok': True})
 
 
@@ -828,10 +840,11 @@ def _seed_performer_from_tpdb_sync(
                     """
                     UPDATE performer
                        SET embedding_count = ?,
-                           is_reference_ready = CASE WHEN ? >= 1 THEN 1 ELSE is_reference_ready END
+                           is_reference_ready = CASE WHEN ? >= 1 THEN 1 ELSE is_reference_ready END,
+                           profile_thumb = CASE WHEN profile_thumb IS NULL THEN ? ELSE profile_thumb END
                      WHERE id = ?
                     """,
-                    (total, total, int(performer_id)),
+                    (total, total, url, int(performer_id)),
                 )
             embeddings_added += 1
         except Exception as exc:
