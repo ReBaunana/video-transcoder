@@ -37,6 +37,18 @@ REFERENCE_READY_MIN = 8
 FFMPEG_BIN = os.environ.get("FFMPEG_BIN", "ffmpeg")
 FFMPEG_TIMEOUT_SEC = 120  # whole-window batch extract; was 20s per single frame
 
+# Codecs that can be decoded by NVIDIA NVDEC (CUVID). Using hardware decode
+# for frame extraction offloads bulk CPU decode work to the GPU decoder,
+# dropping ffmpeg CPU usage from ~580% to ~30% per worker.
+_CUVID_MAP: dict[str, str] = {
+    "h264":       "h264_cuvid",
+    "hevc":       "hevc_cuvid",
+    "mpeg2video": "mpeg2_cuvid",
+    "vp8":        "vp8_cuvid",
+    "vp9":        "vp9_cuvid",
+    "av1":        "av1_cuvid",
+}
+
 # Serialize GPU access across parallel worker threads.
 # InsightFace's app.get() is NOT safe to call from multiple threads on the
 # same ONNX session — concurrent CUDA inference corrupts state. CPU detection
@@ -82,12 +94,40 @@ def _sample_timestamps(duration_sec: float) -> list[float]:
     return [start + i * step for i in range(n)]
 
 
+def _probe_video_codec(video_path: str) -> str | None:
+    """Return the primary video stream codec name via ffprobe, or None on error."""
+    try:
+        proc = subprocess.run(
+            [
+                FFMPEG_BIN.replace("ffmpeg", "ffprobe"),
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                video_path,
+            ],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return proc.stdout.decode(errors="replace").strip().lower() or None
+    except Exception:
+        pass
+    return None
+
+
 def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
     """Extract frames from video using a single batched ffmpeg subprocess.
 
     Replaces the previous per-timestamp loop (one ffmpeg per frame) with one
     decode pass over the sampling window, using fps=N/window to emit N evenly
     spaced frames. 40-60x fewer subprocess spawns for a typical video.
+
+    Uses CUVID hardware decode when the codec is supported (h264, hevc, …) to
+    offload the bulk decode work from CPU to NVDEC — reduces per-worker CPU
+    usage from ~580% to ~30%.  Falls back to software decode with -threads 2
+    for unsupported codecs.
 
     Returns list of (timestamp_sec, BGR image). Empty list on any error.
     """
@@ -107,24 +147,40 @@ def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np
     # frames across the window (modulo source frame rounding).
     fps = n_frames / window
 
+    # Try CUVID hardware decode to move the heavy video decode off the CPU.
+    codec = _probe_video_codec(video_path)
+    cuvid_decoder = _CUVID_MAP.get(codec or "")
+    log.debug(
+        "extract_frames: codec=%s cuvid=%s path=%s",
+        codec, cuvid_decoder, video_path,
+    )
+
     tmp_dir = Path(tempfile.mkdtemp(prefix="vt_frames_"))
     try:
-        # Input -ss before -i = fast keyframe seek to window start.
-        # -to is an output option referring to input PTS when used with input -ss
-        # in modern ffmpeg; safer to use -t with the explicit window length.
-        cmd = [
-            FFMPEG_BIN,
-            "-nostdin",
-            "-loglevel", "error",
-            "-ss", f"{start_t:.3f}",
-            "-i", video_path,
-            "-t", f"{window:.3f}",
-            "-vf", f"fps={fps:.6f},scale='min(1280,iw)':-2",
-            "-vsync", "vfr",
-            "-q:v", "3",
-            "-y",
-            str(tmp_dir / "frame_%05d.jpg"),
-        ]
+        def _build_cmd(use_cuvid: bool) -> list[str]:
+            cmd = [FFMPEG_BIN, "-nostdin", "-loglevel", "error"]
+            if use_cuvid and cuvid_decoder:
+                # Hardware decode: GPU NVDEC handles the heavy lifting.
+                cmd += ["-hwaccel", "cuda", "-c:v", cuvid_decoder]
+            else:
+                # Software decode: cap threads to avoid saturating all CPU cores.
+                cmd += ["-threads", "2"]
+            # Input -ss before -i = fast keyframe seek to window start.
+            # -t is the output duration (safer than -to with input -ss in
+            # newer ffmpeg builds — -to semantics differ when -ss is on input).
+            cmd += [
+                "-ss", f"{start_t:.3f}",
+                "-i", video_path,
+                "-t", f"{window:.3f}",
+                "-vf", f"fps={fps:.6f},scale='min(1280,iw)':-2",
+                "-vsync", "vfr",
+                "-q:v", "3",
+                "-y",
+                str(tmp_dir / "frame_%05d.jpg"),
+            ]
+            return cmd
+
+        cmd = _build_cmd(use_cuvid=bool(cuvid_decoder))
         try:
             proc = subprocess.run(
                 cmd,
@@ -141,6 +197,21 @@ def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np
         except FileNotFoundError:
             log.error("extract_frames: ffmpeg binary not found (%s)", FFMPEG_BIN)
             return []
+
+        # If CUVID init failed (rc != 0, no frames), retry with software decode.
+        if proc.returncode != 0 and cuvid_decoder and not list(tmp_dir.glob("frame_*.jpg")):
+            log.warning(
+                "extract_frames: CUVID (%s) failed (rc=%d) — retrying with CPU decode",
+                cuvid_decoder, proc.returncode,
+            )
+            cmd = _build_cmd(use_cuvid=False)
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, timeout=FFMPEG_TIMEOUT_SEC, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                log.warning("extract_frames: CPU fallback timeout path=%s", video_path)
+                return []
 
         if proc.returncode != 0:
             log.debug(
