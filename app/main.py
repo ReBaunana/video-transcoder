@@ -292,6 +292,19 @@ def _run_auto_rename(db_path: str) -> None:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
 
+        # Promote any file with proposed_filename + a performer that isn't yet
+        # approved — covers pending files enriched before auto-approve was added
+        # and reviewed files whose proposed_filename was rebuilt by accept_match.
+        cur = conn.execute(
+            """UPDATE file_curation SET status = 'approved'
+                WHERE proposed_filename IS NOT NULL
+                  AND status NOT IN ('approved', 'renamed', 'skipped')
+                  AND EXISTS (SELECT 1 FROM file_performer fp WHERE fp.file_curation_id = id)"""
+        )
+        if cur.rowcount:
+            conn.commit()
+            _log.info('auto_rename: promoted %d files to approved', cur.rowcount)
+
         # Catch files that are 'reviewed' (face match accepted) but still lack
         # proposed_filename — rebuild it and approve them.
         stale = conn.execute(
