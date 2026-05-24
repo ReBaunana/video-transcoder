@@ -167,12 +167,12 @@ def _enrich_files(conn: sqlite3.Connection, files: list[dict]) -> list[dict]:
                p.id                  AS performer_id,
                p.canonical_name      AS name,
                p.slug                AS slug,
-               fp.confidence         AS confidence,
+               fp.position           AS position,
                fp.source             AS source
           FROM file_performer fp
           JOIN performer p ON p.id = fp.performer_id
          WHERE fp.file_curation_id IN ({placeholders})
-         ORDER BY fp.confidence DESC NULLS LAST, p.canonical_name
+         ORDER BY fp.position, p.canonical_name
         """,
         ids,
     ).fetchall()
@@ -182,7 +182,6 @@ def _enrich_files(conn: sqlite3.Connection, files: list[dict]) -> list[dict]:
             'id': r['performer_id'],
             'name': r['name'],
             'slug': r['slug'],
-            'confidence': r['confidence'],
             'source': r['source'],
         })
 
@@ -352,21 +351,13 @@ async def library_file_approve(file_id: int, request: Request):
     """
     conn = _db(request)
     row = conn.execute(
-        "SELECT id, proposed_filename, parse_result FROM file_curation WHERE id = ?",
+        "SELECT id, proposed_filename FROM file_curation WHERE id = ?",
         (file_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail='file not found')
 
     proposed = row['proposed_filename']
-    if not proposed and row['parse_result']:
-        try:
-            parsed = json.loads(row['parse_result'])
-            proposed = curation_extractor.build_target_filename(parsed)
-        except (json.JSONDecodeError, Exception) as exc:  # noqa: BLE001
-            log.warning('approve: could not rebuild proposed filename id=%s: %s', file_id, exc)
-            proposed = None
-
     with conn:
         if proposed:
             conn.execute(
