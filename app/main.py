@@ -124,6 +124,15 @@ async def startup():
 
             start_worker(_conn_factory)
             log.info('Face worker started')
+
+            # Seed performers + enqueue face jobs without blocking startup.
+            threading.Thread(
+                target=_startup_face_pipeline,
+                args=(str(DB_PATH),),
+                name='startup-face-pipeline',
+                daemon=True,
+            ).start()
+            log.info('Startup face pipeline spawned')
         else:
             log.info('InsightFace not available — face recognition disabled')
     except ImportError as exc:
@@ -132,6 +141,137 @@ async def startup():
         log.error(f'Face worker startup failed: {exc}')
 
     _start_scheduler()
+
+
+def _startup_face_pipeline(db_path: str) -> None:
+    """One-shot background task at startup: seed + enqueue all face jobs.
+
+    Opens its own SQLite connection — never touches the shared `db` object.
+    Runs seed_known before match_unknown so the index has references first.
+    """
+    _log = logging.getLogger('startup.face_pipeline')
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            from app.curation.tpdb import seed_performers_without_embeddings
+            result = seed_performers_without_embeddings(conn, max_performers=100)
+            _log.info('performer seed result: %s', result)
+        except Exception:
+            _log.exception('seed_performers_without_embeddings failed')
+
+        try:
+            from app.face.worker import enqueue_all_seed_known
+            n = enqueue_all_seed_known(conn)
+            _log.info('enqueued %d seed_known jobs', n)
+        except Exception:
+            _log.exception('enqueue_all_seed_known failed')
+
+        try:
+            from app.face.worker import enqueue_all_unknown
+            n = enqueue_all_unknown(conn)
+            _log.info('enqueued %d match_unknown jobs', n)
+        except Exception:
+            _log.exception('enqueue_all_unknown failed')
+
+    except Exception:
+        _log.exception('startup face pipeline crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _run_tpdb_batch(db_path: str) -> None:
+    """Scheduled TPDB enrichment: process up to 100 un-enriched files per run."""
+    _log = logging.getLogger('scheduler.tpdb')
+    conn = None
+    try:
+        from app.curation.tpdb import enrich_file_from_tpdb, is_configured, seed_performers_without_embeddings
+        if not is_configured():
+            return
+
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+
+        rows = conn.execute(
+            """
+            SELECT id FROM file_curation
+             WHERE tpdb_lookup_at IS NULL
+               AND status NOT IN ('skipped', 'renamed')
+             ORDER BY id LIMIT 100
+            """
+        ).fetchall()
+        if not rows:
+            _log.info('tpdb batch: no candidates')
+            return
+
+        applied = skipped = errors = 0
+        for r in rows:
+            try:
+                res = enrich_file_from_tpdb(conn, int(r['id']))
+                if res.get('applied'):
+                    applied += 1
+                else:
+                    skipped += 1
+            except Exception:
+                _log.exception('tpdb batch: file_id=%s', r['id'])
+                errors += 1
+
+        _log.info('tpdb batch: total=%d applied=%d skipped=%d errors=%d',
+                  len(rows), applied, skipped, errors)
+
+        if applied:
+            try:
+                seed_performers_without_embeddings(conn, max_performers=100)
+            except Exception:
+                _log.exception('post-tpdb performer seed failed')
+            try:
+                from app.face.worker import enqueue_all_seed_known
+                enqueue_all_seed_known(conn)
+            except Exception:
+                _log.exception('post-tpdb enqueue_all_seed_known failed')
+
+    except Exception:
+        _log.exception('_run_tpdb_batch crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _run_face_enqueue(db_path: str) -> None:
+    """Scheduled sweep: enqueue seed_known + match_unknown for all eligible files."""
+    _log = logging.getLogger('scheduler.face_enqueue')
+    conn = None
+    try:
+        from app.face.model import is_face_rec_available
+        if not is_face_rec_available():
+            return
+        from app.face.worker import enqueue_all_seed_known, enqueue_all_unknown
+
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+
+        n_seed = enqueue_all_seed_known(conn)
+        _log.info('sweep: %d seed_known enqueued', n_seed)
+        n_match = enqueue_all_unknown(conn)
+        _log.info('sweep: %d match_unknown enqueued', n_match)
+
+    except Exception:
+        _log.exception('_run_face_enqueue crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @app.on_event('shutdown')
@@ -160,6 +300,9 @@ def _start_scheduler():
                 last_backup_ts = backups[-1].stat().st_mtime
 
         last_prune_ts = 0.0
+        last_tpdb_batch_ts = 0.0    # fire on first tick
+        last_face_enqueue_ts = 0.0  # fire on first tick
+        db_path_str = str(DB_PATH)
 
         while True:
             now    = datetime.now()
@@ -186,6 +329,26 @@ def _start_scheduler():
                         log.info(f'Scheduled prune: {pruned} stale cache entries removed')
                     except Exception as e:
                         log.error(f'Prune failed: {e}')
+
+            # TPDB auto-batch: enrich un-enriched files every 30 min.
+            if (now_ts - last_tpdb_batch_ts) >= 30 * 60:
+                last_tpdb_batch_ts = now_ts
+                threading.Thread(
+                    target=_run_tpdb_batch,
+                    args=(db_path_str,),
+                    name='sched-tpdb-batch',
+                    daemon=True,
+                ).start()
+
+            # Face sweep: seed + match all eligible files every 60 min.
+            if (now_ts - last_face_enqueue_ts) >= 60 * 60:
+                last_face_enqueue_ts = now_ts
+                threading.Thread(
+                    target=_run_face_enqueue,
+                    args=(db_path_str,),
+                    name='sched-face-enqueue',
+                    daemon=True,
+                ).start()
 
             if transcoder.SCHEDULE_HOUR >= 0 and now.hour == transcoder.SCHEDULE_HOUR and now.minute == 0:
                 if not transcoder.state['running']:

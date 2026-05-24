@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 SIMILARITY_HIGH = 0.55      # auto-suggest, green
 SIMILARITY_MEDIUM = 0.42    # show as yellow, needs confirmation
 MIN_FRAME_MATCHES = 3       # performer must appear in >= 3 frames
-AUTO_ACCEPT_SINGLE_MATCH = False  # never auto-accept; only flip curation status
+AUTO_ACCEPT_SINGLE_MATCH = False  # legacy flag — kept for compat; auto-accept uses AUTO_ACCEPT_THRESHOLD
+AUTO_ACCEPT_THRESHOLD = 0.72     # rank-1 sim >= this with clear gap triggers automatic accept
 
 
 class PerformerIndex:
@@ -315,6 +316,40 @@ def match_video(
         conn.rollback()
         log.exception("match_video: DB error file_id=%s", file_curation_id)
         raise
+
+    # Auto-accept when rank-1 is high confidence and there's no plausible competitor.
+    # Deferred import avoids circular load: worker.py imports matcher at module level.
+    if candidates:
+        top = candidates[0]
+        runner_up = candidates[1] if len(candidates) > 1 else None
+        if top["similarity"] >= AUTO_ACCEPT_THRESHOLD and (
+            runner_up is None or runner_up["similarity"] < SIMILARITY_MEDIUM
+        ):
+            try:
+                row = conn.execute(
+                    "SELECT id FROM face_match_result WHERE file_curation_id=? AND performer_id=? AND rank=1",
+                    (file_curation_id, top["performer_id"]),
+                ).fetchone()
+                if row is not None:
+                    match_id = int(row[0])
+                    accept_match(conn, match_id)
+                    try:
+                        from app.face.worker import enqueue_seed_for_performer
+                        enqueue_seed_for_performer(conn, top["performer_id"])
+                    except Exception:
+                        log.exception(
+                            "auto-accept: enqueue_seed_for_performer failed performer_id=%s",
+                            top["performer_id"],
+                        )
+                    log.info(
+                        "auto-accept: file_id=%s performer=%r sim=%.3f match_id=%s",
+                        file_curation_id, top["performer_name"], top["similarity"], match_id,
+                    )
+            except Exception:
+                log.exception(
+                    "auto-accept: failed file_id=%s performer_id=%s",
+                    file_curation_id, top["performer_id"],
+                )
 
     log.info(
         "match_video: file_id=%s candidates=%d total_faces=%d top_sim=%.3f",

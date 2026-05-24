@@ -666,6 +666,62 @@ def _auto_seed_performers_from_tpdb(
             log.exception("_auto_seed_performers_from_tpdb: failed performer_id=%s", performer_id)
 
 
+def seed_performers_without_embeddings(
+    conn: sqlite3.Connection,
+    max_performers: int = 50,
+) -> dict:
+    """Seed face embeddings from TPDB profile images for performers with no embeddings.
+
+    Iterates performers with embedding_count=0, searches TPDB for a profile photo,
+    runs InsightFace detection, and stores the embedding + profile_thumb.
+    Safe to call repeatedly — skips performers that already have embeddings.
+    Returns {'ok': bool, 'checked': int, 'seeded': int}.
+    """
+    if not is_configured():
+        log.debug("seed_performers_without_embeddings: TPDB not configured")
+        return {"ok": False, "error": "tpdb_not_configured", "checked": 0, "seeded": 0}
+
+    try:
+        from app.face.model import is_face_rec_available
+        if not is_face_rec_available():
+            log.debug("seed_performers_without_embeddings: face rec unavailable")
+            return {"ok": False, "error": "face_rec_unavailable", "checked": 0, "seeded": 0}
+    except ImportError:
+        return {"ok": False, "error": "face_stack_missing", "checked": 0, "seeded": 0}
+
+    rows = conn.execute(
+        "SELECT id, canonical_name FROM performer WHERE embedding_count = 0 ORDER BY id LIMIT ?",
+        (max(1, min(int(max_performers), 500)),),
+    ).fetchall()
+
+    if not rows:
+        log.info("seed_performers_without_embeddings: all performers already have embeddings")
+        return {"ok": True, "checked": 0, "seeded": 0}
+
+    id_name_pairs = [(int(r[0]), str(r[1])) for r in rows]
+    seeded_before = int(
+        conn.execute("SELECT COUNT(*) FROM face_embedding WHERE performer_id IS NOT NULL").fetchone()[0]
+    )
+
+    for pid, name in id_name_pairs:
+        try:
+            _auto_seed_performers_from_tpdb(conn, [(pid, name)], scene_performers=[])
+        except Exception:
+            log.exception(
+                "seed_performers_without_embeddings: failed performer_id=%s name=%r", pid, name,
+            )
+
+    seeded_after = int(
+        conn.execute("SELECT COUNT(*) FROM face_embedding WHERE performer_id IS NOT NULL").fetchone()[0]
+    )
+    seeded = seeded_after - seeded_before
+    log.info(
+        "seed_performers_without_embeddings: checked=%d new_embeddings=%d",
+        len(id_name_pairs), seeded,
+    )
+    return {"ok": True, "checked": len(id_name_pairs), "seeded": seeded}
+
+
 def _ext_from_path(path: str) -> str:
     ext = Path(path).suffix.lower()
     return ext or ".mp4"

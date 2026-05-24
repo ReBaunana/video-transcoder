@@ -153,17 +153,26 @@ def enqueue_job(
 
 
 def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
-    """Enqueue match_unknown jobs for all eligible files."""
+    """Enqueue match_unknown jobs for all eligible files.
+
+    Includes 'unknown' status files (TPDB couldn't identify them, but face
+    recognition may still match performers). Excludes 'skipped' and 'renamed'.
+    Skips files that already have an assigned performer or accepted face match.
+    """
     cur = conn.cursor()
     try:
         cur.execute(
             """
             SELECT fc.id
               FROM file_curation fc
-             WHERE fc.status NOT IN ('skipped', 'unknown')
+             WHERE fc.status NOT IN ('skipped', 'renamed')
                AND NOT EXISTS (
                    SELECT 1 FROM face_match_result mr
                     WHERE mr.file_curation_id = fc.id AND mr.status = 'accepted'
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM file_performer fp
+                    WHERE fp.file_curation_id = fc.id
                )
                AND NOT EXISTS (
                    SELECT 1 FROM face_recognition_job j
@@ -197,6 +206,61 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
     conn.commit()
 
     log.info("enqueue_all_unknown: enqueued=%d skipped=%d", enqueued, len(ids) - enqueued)
+    return enqueued
+
+
+def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
+    """Enqueue seed_known jobs for single-performer files whose performer has no embeddings.
+
+    Skips files that already have a pending/running seed_known job.
+    Priority 10 (runs before match_unknown at priority 100).
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT fp.file_curation_id
+              FROM file_performer fp
+              JOIN file_curation fc ON fc.id = fp.file_curation_id
+              JOIN performer p      ON p.id  = fp.performer_id
+             WHERE fc.status NOT IN ('skipped', 'renamed')
+               AND p.embedding_count = 0
+               AND (
+                   SELECT COUNT(*) FROM file_performer fp2
+                    WHERE fp2.file_curation_id = fp.file_curation_id
+               ) = 1
+               AND NOT EXISTS (
+                   SELECT 1 FROM face_recognition_job j
+                    WHERE j.file_curation_id = fp.file_curation_id
+                      AND j.job_type = 'seed_known'
+                      AND j.status IN ('pending', 'running')
+               )
+            """
+        )
+        ids = [int(r[0]) for r in cur.fetchall()]
+    except Exception:
+        log.exception("enqueue_all_seed_known: select failed")
+        return 0
+
+    enqueued = 0
+    for fid in ids:
+        try:
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO face_recognition_job
+                    (file_curation_id, job_type, status, priority, attempts,
+                     last_error, started_at, finished_at)
+                VALUES (?, 'seed_known', 'pending', 10, 0, NULL, NULL, NULL)
+                """,
+                (fid,),
+            )
+            if cur.rowcount:
+                enqueued += 1
+        except Exception:
+            log.exception("enqueue_all_seed_known: insert failed file_id=%s", fid)
+    conn.commit()
+
+    log.info("enqueue_all_seed_known: enqueued=%d skipped=%d", enqueued, len(ids) - enqueued)
     return enqueued
 
 
