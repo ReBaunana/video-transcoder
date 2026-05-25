@@ -21,6 +21,7 @@ RETRANSCODE_ORIGINALS  = False
 DISABLED_MOUNTS: set   = set()
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))    # NVENC workers
 VAAPI_WORKERS      = int(os.getenv('VAAPI_WORKERS', '0'))             # Intel VAAPI workers
+FACE_WORKERS: int  = 3                                                # Face recognition workers
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
 PRUNE_INTERVAL_H   = max(1, int(os.getenv('PRUNE_INTERVAL_H', '24')))
@@ -60,7 +61,7 @@ _killed_slots: set[int] = set()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
+    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, FACE_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -77,6 +78,7 @@ def load_settings():
         DISABLED_MOUNTS        = set(data.get('disabled_mounts', list(DISABLED_MOUNTS)))
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         VAAPI_WORKERS     = max(0, min(int(data.get('vaapi_workers', VAAPI_WORKERS)), 3))
+        FACE_WORKERS      = max(1, min(int(data.get('face_workers', FACE_WORKERS)), 8))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
         if 'schedule_hour' in data:
@@ -99,6 +101,7 @@ def save_settings():
         tmp.write_text(json.dumps({
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
             'workers': WORKERS, 'vaapi_workers': VAAPI_WORKERS,
+            'face_workers': FACE_WORKERS,
             'backup_interval_h': BACKUP_INTERVAL_H,
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
             'retranscode_originals': RETRANSCODE_ORIGINALS,

@@ -685,6 +685,24 @@ async def api_face_status(request: Request) -> JSONResponse:
     })
 
 
+@router.get('/api/face-workers')
+async def api_get_face_workers() -> JSONResponse:
+    from app.face.worker import get_n_workers
+    return JSONResponse({'count': get_n_workers()})
+
+
+@router.post('/api/face-workers')
+async def api_set_face_workers(request: Request) -> JSONResponse:
+    body = await request.json()
+    n = max(1, min(int(body.get('count', 3)), 8))
+    from app.face.worker import resize_pool
+    resize_pool(n)
+    import app.transcoder as _t
+    _t.FACE_WORKERS = n
+    _t.save_settings()
+    return JSONResponse({'count': n})
+
+
 @router.post('/library/files/{file_id}/tpdb')
 async def library_file_tpdb(file_id: int, request: Request) -> JSONResponse:
     """Lookup a single file against ThePornDB and auto-apply if confident."""

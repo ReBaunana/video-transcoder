@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 
 _stop_event = threading.Event()
 _worker_threads: list[threading.Thread] = []
+_conn_factory_ref: "Callable[[], sqlite3.Connection] | None" = None
+_n_workers: int = 0  # set in start_worker; module load sees DEFAULT_WORKERS below
 _stats_lock = threading.Lock()
 _stats = {"done": 0, "failed": 0, "started_at": 0}
 
@@ -27,7 +29,10 @@ _jobs_since_reset = 0
 POLL_INTERVAL_SEC = 3.0
 MAX_ATTEMPTS = 3
 RESET_AFTER_N_JOBS = 50  # mitigate ONNX VRAM fragmentation
-DEFAULT_WORKERS = 2  # CPU extract + GPU detect overlap nicely with 2 threads
+DEFAULT_WORKERS = 3  # CPU extract + GPU detect overlap nicely with 2-3 threads
+
+# Initialize _n_workers now that DEFAULT_WORKERS is defined; gets overwritten in start_worker().
+_n_workers = DEFAULT_WORKERS
 
 
 # --------------------------------------------------------------------------- #
@@ -47,13 +52,15 @@ def start_worker(
     Each thread gets its own connection — SQLite connections are not safe
     to share across threads.
     """
-    global _worker_threads
+    global _worker_threads, _conn_factory_ref, _n_workers
     # Already running? Don't double-start.
     if any(t.is_alive() for t in _worker_threads):
         log.debug("start_worker: already running (%d threads)", len(_worker_threads))
         return
 
-    n = max(1, int(n_workers))
+    _conn_factory_ref = conn_factory
+    n = max(1, min(int(n_workers), 8))
+    _n_workers = n
     _stop_event.clear()
     with _stats_lock:
         _stats["started_at"] = int(time.time())
@@ -75,6 +82,47 @@ def stop_worker() -> None:
     """Signal all worker threads to exit at the next poll iteration."""
     _stop_event.set()
     log.info("Face worker stop requested (%d threads)", len(_worker_threads))
+
+
+def get_n_workers() -> int:
+    """Return the current target worker count."""
+    return _n_workers
+
+
+def resize_pool(n: int) -> None:
+    """Stop all workers and restart with n workers. Returns immediately — runs in background."""
+    threading.Thread(
+        target=_do_resize,
+        args=(max(1, min(n, 8)),),
+        name="face-pool-resize",
+        daemon=True,
+    ).start()
+
+
+def _do_resize(n: int) -> None:
+    global _worker_threads, _n_workers
+    import time as _t
+    log.info("face-pool-resize: stopping %d workers, restarting with %d", len(_worker_threads), n)
+    _stop_event.set()
+    _t.sleep(POLL_INTERVAL_SEC + 0.5)  # let old threads exit
+    _stop_event.clear()
+    _n_workers = n
+    with _stats_lock:
+        _stats["started_at"] = int(_t.time())
+    _worker_threads = []
+    if _conn_factory_ref is None:
+        log.error("face-pool-resize: no conn_factory stored — cannot restart")
+        return
+    for i in range(n):
+        t = threading.Thread(
+            target=_worker_loop,
+            args=(_conn_factory_ref, i),
+            name=f"face-worker-{i}",
+            daemon=True,
+        )
+        t.start()
+        _worker_threads.append(t)
+    log.info("face-pool-resize: restarted with %d workers", n)
 
 
 def get_worker_status() -> dict:

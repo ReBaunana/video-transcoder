@@ -560,6 +560,8 @@
   .face-status-dot.running { background: #22c55e; box-shadow: 0 0 0 2px #22c55e33; animation: pulse 1.5s infinite; }
   .face-status-error { font-size: .72rem; color: #ef4444; margin-top: .2rem; }
   .face-status-row.warning { color: #f59e0b; font-weight: 500; }
+  .face-workers-label { font-size: .72rem; color: var(--text-muted); display: flex; align-items: center; gap: .3rem; cursor: default; }
+  .face-workers-select { font-size: .72rem; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; color: var(--text); padding: 1px 3px; cursor: pointer; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
   @media (max-width: 640px) {
     .face-status-header { flex-wrap: wrap; }
@@ -833,6 +835,15 @@
           <button class="face-status-header" onclick="toggleFaceStatus()" aria-expanded="false">
             <span class="face-status-title">Face Recognition</span>
             <span class="face-status-summary" data-role="summary">Loading…</span>
+            <label class="face-workers-label" onclick="event.stopPropagation()">
+              Workers:
+              <select id="face-workers-select" class="face-workers-select" onchange="setFaceWorkers(this.value)" onclick="event.stopPropagation()">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+                <option value="4">4</option>
+              </select>
+            </label>
             <span class="face-status-chevron" aria-hidden="true">▼</span>
           </button>
           <div class="face-status-body" hidden>
@@ -1308,6 +1319,24 @@
     body.hidden = expanded;
   }
 
+  function setFaceWorkers(n) {
+    fetch('/api/face-workers', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({count: parseInt(n)}),
+    }).catch(() => {});
+  }
+
+  function syncFaceWorkersDropdown() {
+    fetch('/api/face-workers', {cache: 'no-store'})
+      .then(r => r.json())
+      .then(d => {
+        const sel = document.getElementById('face-workers-select');
+        if (sel) sel.value = String(d.count);
+      })
+      .catch(() => {});
+  }
+
   function renderFaceStatus(s) {
     const panel = document.getElementById('face-status-panel');
     if (!panel || !s) return 30000;
@@ -1432,12 +1461,15 @@
         .then(s => renderFaceStatus(s))
         .catch(() => 30000);
 
+      syncFaceWorkersDropdown();
+
       Promise.all([statsPromise, facePromise]).then(([, interval]) => {
         scheduleNext(typeof interval === 'number' ? interval : 30000);
       });
     }
 
     updateAll(); // initial call
+    syncFaceWorkersDropdown();
   })();
 </script>
 {% endblock %}

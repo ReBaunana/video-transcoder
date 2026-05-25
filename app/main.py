@@ -122,7 +122,7 @@ async def startup():
                 conn.row_factory = sqlite3.Row
                 return conn
 
-            start_worker(_conn_factory)
+            start_worker(_conn_factory, n_workers=transcoder.FACE_WORKERS)
             log.info('Face worker started')
 
             # Seed performers + enqueue face jobs without blocking startup.
