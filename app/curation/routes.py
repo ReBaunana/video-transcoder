@@ -543,6 +543,26 @@ async def library_tpdb_status() -> JSONResponse:
     return JSONResponse({'available': bool(curation_tpdb.is_configured())})
 
 
+@router.get('/api/library-stats')
+async def api_library_stats(request: Request) -> JSONResponse:
+    """Mount stats for JS polling — total/renamed/approved/pending per mount."""
+    conn = _db(request)
+    stats = dbc.get_library_stats(conn)
+    by_mount = {s['mount']: s for s in stats}
+    return JSONResponse([
+        {
+            'name':     m,
+            'total':    by_mount.get(m, {}).get('total', 0),
+            'renamed':  by_mount.get(m, {}).get('renamed', 0),
+            'approved': by_mount.get(m, {}).get('approved', 0),
+            'pending':  by_mount.get(m, {}).get('pending', 0),
+            'skipped':  by_mount.get(m, {}).get('skipped', 0),
+            'unknown':  by_mount.get(m, {}).get('unknown', 0),
+        }
+        for m in MEDIA_MOUNTS
+    ])
+
+
 @router.post('/library/files/{file_id}/tpdb')
 async def library_file_tpdb(file_id: int, request: Request) -> JSONResponse:
     """Lookup a single file against ThePornDB and auto-apply if confident."""

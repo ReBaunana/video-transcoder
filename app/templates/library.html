@@ -716,7 +716,7 @@
         {% set pct_approved = (m.approved / m_total * 100) %}
         {% set pct_pending = (m.pending / m_total * 100) %}
         {% set pct_skipped = (m.skipped / m_total * 100) %}
-        <a href="/library?mount={{ m.name }}" class="mount-card {{ 'active' if m.name == selected_mount else '' }}">
+        <a href="/library?mount={{ m.name }}" class="mount-card {{ 'active' if m.name == selected_mount else '' }}" data-mount="{{ m.name }}">
           <div class="mount-card-head">
             <span class="mount-name">{{ m.name }}</span>
             <span class="mount-total">{{ m.total }}</span>
@@ -757,18 +757,18 @@
 
         <!-- Stats row -->
         {% set sel_mount = (mounts | selectattr('name','equalto',selected_mount) | first) %}
-        <div class="stats-row">
+        <div class="stats-row" data-selected-mount="{{ selected_mount }}">
           <div class="stat-card c-blue">
             <div class="stat-card-lbl">Total files</div>
-            <div class="stat-card-val">{{ (sel_mount.total if sel_mount else total_files) }}</div>
+            <div class="stat-card-val" id="stat-total">{{ (sel_mount.total if sel_mount else total_files) }}</div>
           </div>
           <div class="stat-card c-green">
             <div class="stat-card-lbl">Renamed</div>
-            <div class="stat-card-val">{{ sel_mount.renamed if sel_mount else 0 }}</div>
+            <div class="stat-card-val" id="stat-renamed">{{ sel_mount.renamed if sel_mount else 0 }}</div>
           </div>
           <div class="stat-card c-yellow">
             <div class="stat-card-lbl">Pending review</div>
-            <div class="stat-card-val">{{ sel_mount.pending if sel_mount else 0 }}</div>
+            <div class="stat-card-val" id="stat-pending">{{ sel_mount.pending if sel_mount else 0 }}</div>
           </div>
           <div class="stat-card c-cyan">
             <div class="stat-card-lbl">Face queue</div>
@@ -1226,5 +1226,64 @@
 
   // Decide once on page load whether to show TPDB controls.
   checkTpdbAvailability().then(ok => _showTpdbControls(!!ok));
+
+  /* ── Live mount stats — poll every 30 s ─────────────────────────── */
+  (function() {
+    const selectedMount = document.querySelector('.stats-row[data-selected-mount]')
+      ?.dataset.selectedMount || null;
+
+    function updateStats() {
+      fetch('/api/library-stats', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(mounts => {
+          mounts.forEach(m => {
+            const total = m.total || 1;
+            const pctR = (m.renamed  / total * 100);
+            const pctA = (m.approved / total * 100);
+            const pctP = (m.pending  / total * 100);
+            const pctS = (m.skipped  / total * 100);
+
+            // Update sidebar card
+            const card = document.querySelector(`.mount-card[data-mount="${m.name}"]`);
+            if (card) {
+              const lbl = card.querySelector('.mount-pct-label');
+              if (lbl) lbl.textContent = `${m.renamed} / ${m.total} renamed`;
+              const val = card.querySelector('.mount-pct-value');
+              if (val) val.textContent = `${Math.floor(pctR)}%`;
+              const tot = card.querySelector('.mount-total');
+              if (tot) tot.textContent = m.total;
+              const bars = card.querySelectorAll('.mount-bars > div');
+              if (bars[0]) bars[0].style.width = pctR + '%';
+              if (bars[1]) bars[1].style.width = pctA + '%';
+              if (bars[2]) bars[2].style.width = pctP + '%';
+              if (bars[3]) bars[3].style.width = pctS + '%';
+              const msA = card.querySelector('.ms-approved');
+              if (msA) { msA.textContent = m.approved + ' approved'; msA.style.display = m.approved ? '' : 'none'; }
+              const msP = card.querySelector('.ms-pending');
+              if (msP) msP.textContent = m.pending + ' pending';
+            }
+
+            // Update top stat cards for the selected mount
+            if (selectedMount && m.name === selectedMount) {
+              const elT = document.getElementById('stat-total');
+              const elR = document.getElementById('stat-renamed');
+              const elP = document.getElementById('stat-pending');
+              if (elT) elT.textContent = m.total;
+              if (elR) elR.textContent = m.renamed;
+              if (elP) elP.textContent = m.pending;
+            }
+          });
+
+          // Update mobile select option labels
+          document.querySelectorAll('.mount-select-mobile select option[value]').forEach(opt => {
+            const m = mounts.find(x => x.name === opt.value);
+            if (m && opt.value) opt.textContent = `${m.name} — ${m.renamed}/${m.total} renamed`;
+          });
+        })
+        .catch(() => {});
+    }
+
+    setInterval(updateStats, 30000);
+  })();
 </script>
 {% endblock %}
