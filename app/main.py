@@ -292,6 +292,16 @@ def _run_auto_rename(db_path: str) -> None:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
 
+        # Reset any 'approved' files that have no proposed_filename (orphaned by
+        # failed enrichment) — they can never be renamed and block the queue.
+        orphan_cur = conn.execute(
+            """UPDATE file_curation SET status = 'unknown', updated_at = datetime('now')
+                WHERE status = 'approved' AND proposed_filename IS NULL"""
+        )
+        if orphan_cur.rowcount:
+            conn.commit()
+            _log.warning('auto_rename: reset %d orphaned approved files to unknown', orphan_cur.rowcount)
+
         # Batch-accept pending face matches that meet the auto-accept threshold.
         # Handles existing rows that were stored before the threshold was reached
         # and any matches processed while the app was offline.

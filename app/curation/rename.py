@@ -86,13 +86,14 @@ def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
             }
 
         if from_path == to_path:
-            conn.rollback()
-            return {
-                "ok": False,
-                "from": from_path,
-                "to": to_path,
-                "error": "noop_same_name",
-            }
+            conn.execute(
+                """UPDATE file_curation
+                      SET status = 'renamed', renamed_at = datetime('now'), updated_at = datetime('now')
+                    WHERE id = ?""",
+                (int(file_curation_id),),
+            )
+            conn.commit()
+            return {"ok": True, "from": from_path, "to": to_path, "error": None}
 
         if not os.path.lexists(from_path):
             conn.rollback()
