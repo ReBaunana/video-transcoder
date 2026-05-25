@@ -317,38 +317,91 @@ def match_video(
         log.exception("match_video: DB error file_id=%s", file_curation_id)
         raise
 
-    # Auto-accept when rank-1 is high confidence and there's no plausible competitor.
+    # Auto-accept: primary performer = most frequent by frame count.
+    # Secondary performers (fewer frames) go into file_performer for filename only.
     # Deferred import avoids circular load: worker.py imports matcher at module level.
     if candidates:
-        top = candidates[0]
-        runner_up = candidates[1] if len(candidates) > 1 else None
-        if top["similarity"] >= AUTO_ACCEPT_THRESHOLD and (
-            runner_up is None or runner_up["similarity"] < SIMILARITY_MEDIUM
-        ):
+        by_frame = sorted(candidates, key=lambda c: c["match_count"], reverse=True)
+        primary = by_frame[0]
+        secondaries = by_frame[1:]
+        # Primary must appear in ≥ 30% more frames than the runner-up to auto-accept.
+        top_is_dominant = (
+            not secondaries
+            or secondaries[0]["match_count"] < 0.7 * primary["match_count"]
+        )
+        if primary["similarity"] >= AUTO_ACCEPT_THRESHOLD and top_is_dominant:
             try:
                 row = conn.execute(
-                    "SELECT id FROM face_match_result WHERE file_curation_id=? AND performer_id=? AND rank=1",
-                    (file_curation_id, top["performer_id"]),
+                    "SELECT id FROM face_match_result WHERE file_curation_id=? AND performer_id=?",
+                    (file_curation_id, primary["performer_id"]),
                 ).fetchone()
                 if row is not None:
                     match_id = int(row[0])
                     accept_match(conn, match_id)
+                    # Insert secondary performers into file_performer (filename only, not folder).
+                    for pos, sec in enumerate(secondaries, start=1):
+                        conn.execute(
+                            """INSERT OR IGNORE INTO file_performer
+                                   (file_curation_id, performer_id, position, source)
+                               VALUES (?, ?, ?, 'face_recognition')""",
+                            (file_curation_id, sec["performer_id"], pos),
+                        )
+                    if secondaries:
+                        conn.commit()
+                        try:
+                            fc_row = conn.execute(
+                                "SELECT studio, release_date, title, resolution, path FROM file_curation WHERE id = ?",
+                                (file_curation_id,),
+                            ).fetchone()
+                            p_names = [
+                                r[0] for r in conn.execute(
+                                    """SELECT p.canonical_name FROM file_performer fp
+                                         JOIN performer p ON p.id = fp.performer_id
+                                        WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+                                    (file_curation_id,),
+                                ).fetchall()
+                            ]
+                            if fc_row and p_names:
+                                import os as _os
+                                from app.curation.tpdb import _rebuild_proposed_filename
+                                ext = _os.path.splitext(str(fc_row[4]))[1]
+                                proposed = _rebuild_proposed_filename(
+                                    studio=fc_row[0], release_date=fc_row[1], title=fc_row[2],
+                                    performers=p_names, resolution=fc_row[3], ext=ext,
+                                )
+                                if proposed:
+                                    conn.execute(
+                                        """UPDATE file_curation SET proposed_filename = ?
+                                            WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
+                                        (proposed, file_curation_id),
+                                    )
+                                    conn.commit()
+                                    log.info(
+                                        "auto-accept: multi-performer file_id=%s performers=%r",
+                                        file_curation_id, p_names,
+                                    )
+                        except Exception:
+                            log.exception(
+                                "auto-accept: secondary filename rebuild failed file_id=%s",
+                                file_curation_id,
+                            )
                     try:
                         from app.face.worker import enqueue_seed_for_performer
-                        enqueue_seed_for_performer(conn, top["performer_id"])
+                        enqueue_seed_for_performer(conn, primary["performer_id"])
                     except Exception:
                         log.exception(
                             "auto-accept: enqueue_seed_for_performer failed performer_id=%s",
-                            top["performer_id"],
+                            primary["performer_id"],
                         )
                     log.info(
-                        "auto-accept: file_id=%s performer=%r sim=%.3f match_id=%s",
-                        file_curation_id, top["performer_name"], top["similarity"], match_id,
+                        "auto-accept: file_id=%s performer=%r sim=%.3f match_id=%s secondaries=%d",
+                        file_curation_id, primary["performer_name"], primary["similarity"],
+                        match_id, len(secondaries),
                     )
             except Exception:
                 log.exception(
                     "auto-accept: failed file_id=%s performer_id=%s",
-                    file_curation_id, top["performer_id"],
+                    file_curation_id, primary["performer_id"],
                 )
 
     log.info(

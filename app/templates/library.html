@@ -528,11 +528,41 @@
 
   .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
 
+  /* ─── Mobile mount select (hidden on desktop) ─── */
+  .mount-select-mobile { display: none; }
+  .mount-select-mobile select {
+    width: 100%;
+    padding: .65rem .9rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  .mount-select-mobile select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
   @media (max-width: 1100px) {
     .layout { grid-template-columns: 1fr; }
     .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
     .mount-card { min-width: 220px; flex: 1 1 220px; }
     .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 640px) {
+    main { padding: .75rem .85rem 5rem; }
+    .layout { display: block; }
+    .mounts-sidebar { display: none; }
+    .mount-select-mobile { display: block; margin-bottom: .85rem; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); font-size: .88em; }
+    .action-bar { padding: .55rem .7rem; gap: .4rem; }
+    .filter-pills { flex-wrap: wrap; border-radius: var(--radius-sm); }
+    .tbl-wrap { margin: 0 -.85rem; border-radius: 0; }
   }
 </style>
 {% endblock %}
@@ -574,6 +604,19 @@
 
 {% block content %}
 <main>
+
+  <!-- Mobile mount select (only visible at ≤640px) -->
+  <div class="mount-select-mobile">
+    <select onchange="location.href='/library?mount='+encodeURIComponent(this.value)" aria-label="Select mount">
+      <option value="">— Select a mount —</option>
+      {% for m in mounts %}
+        <option value="{{ m.name }}" {{ 'selected' if m.name == selected_mount else '' }}>
+          {{ m.name }} — {{ m.renamed }}/{{ m.total }} renamed
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
   <div class="layout">
 
     <!-- ── Mount sidebar ──────────────────────────── -->
