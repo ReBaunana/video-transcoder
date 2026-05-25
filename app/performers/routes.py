@@ -165,45 +165,54 @@ def _get_unknown_faces(conn: sqlite3.Connection, limit: int = 24) -> list[dict]:
 
 # ── Pages ────────────────────────────────────────────────────────────────────
 
+_SORT_CLAUSES = {
+    'name':   'p.canonical_name COLLATE NOCASE',
+    'videos': 'video_count DESC, p.canonical_name COLLATE NOCASE',
+}
+
+_PERF_SELECT = """
+    SELECT p.id, p.canonical_name, p.slug,
+           COALESCE(p.profile_thumb,
+               (SELECT fe.thumbnail_path FROM face_embedding fe
+                 WHERE fe.performer_id = p.id AND fe.thumbnail_path IS NOT NULL
+                 ORDER BY COALESCE(fe.quality_score, 0) DESC LIMIT 1)
+           ) AS profile_thumb,
+           p.embedding_count, p.is_reference_ready,
+           (SELECT COUNT(*) FROM file_performer fp WHERE fp.performer_id = p.id) AS video_count
+      FROM performer p
+"""
+
+
 @router.get('/performers', response_class=HTMLResponse)
 async def performers_index(
     request: Request,
     search: str = Query(default=''),
+    sort: str = Query(default='name'),
     page: int = Query(default=1, ge=1),
 ):
-    """Render the performer index — paginated, with an optional name filter."""
+    """Render the performer index — paginated, sortable, with optional name filter."""
     conn = _db(request)
     page_size = PAGE_SIZE
     offset = (page - 1) * page_size
+    order = _SORT_CLAUSES.get(sort, _SORT_CLAUSES['name'])
 
     if search:
         like = f'%{search}%'
         rows = conn.execute(
-            """
-            SELECT p.id, p.canonical_name, p.slug,
-                   COALESCE(p.profile_thumb,
-                       (SELECT fe.thumbnail_path FROM face_embedding fe
-                         WHERE fe.performer_id = p.id AND fe.thumbnail_path IS NOT NULL
-                         ORDER BY COALESCE(fe.quality_score, 0) DESC LIMIT 1)
-                   ) AS profile_thumb,
-                   p.embedding_count, p.is_reference_ready,
-                   (SELECT COUNT(*) FROM file_performer fp WHERE fp.performer_id = p.id) AS video_count
-              FROM performer p
-             WHERE canonical_name LIKE ?
-             ORDER BY canonical_name
-             LIMIT ? OFFSET ?
-            """,
+            _PERF_SELECT + f" WHERE canonical_name LIKE ? ORDER BY {order} LIMIT ? OFFSET ?",
             (like, page_size, offset),
         ).fetchall()
         total = conn.execute(
-            "SELECT COUNT(*) FROM performer WHERE canonical_name LIKE ?",
-            (like,),
+            "SELECT COUNT(*) FROM performer WHERE canonical_name LIKE ?", (like,),
         ).fetchone()[0]
-        performers = [dict(r) for r in rows]
     else:
-        performers = [dict(r) for r in dbc.get_performers_list(conn, page_size, offset)]
+        rows = conn.execute(
+            _PERF_SELECT + f" ORDER BY {order} LIMIT ? OFFSET ?",
+            (page_size, offset),
+        ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM performer").fetchone()[0]
 
+    performers = [dict(r) for r in rows]
     total_pages = max(1, math.ceil(int(total) / page_size)) if total else 1
 
     context = {
@@ -213,6 +222,7 @@ async def performers_index(
         'face_matches':       [],
         'unknown_faces':      _get_unknown_faces(conn),
         'search':             search,
+        'sort':               sort,
         'page':               page,
         'page_size':          page_size,
         'total':              int(total),

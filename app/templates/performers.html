@@ -651,6 +651,13 @@
       <button class="view-tab" data-view="ready" onclick="setView(this, 'ready')">Ready</button>
       <button class="view-tab" data-view="unverified" onclick="setView(this, 'unverified')">Unverified</button>
     </div>
+    {% set sort_qs = ('&search=' ~ search) if search else '' %}
+    <nav class="filter-pills" style="margin-left:auto" aria-label="Sort by">
+      <a href="/performers?sort=name{{ sort_qs }}"
+         class="filter-pill {{ 'active' if (sort or 'name') == 'name' else '' }}">A–Z</a>
+      <a href="/performers?sort=videos{{ sort_qs }}"
+         class="filter-pill {{ 'active' if sort == 'videos' else '' }}">Most videos</a>
+    </nav>
   </div>
 
   <!-- ── Performer detail (when selected) ────────────────── -->
@@ -865,7 +872,7 @@
       Page {{ page }} of {{ total_pages }} · {{ total }} performers
     </div>
     <div style="display:flex;gap:.35rem">
-      {% set qs = ('&search=' ~ search) if search else '' %}
+      {% set qs = (('&search=' ~ search) if search else '') ~ (('&sort=' ~ sort) if sort and sort != 'name' else '') %}
       {% if page > 1 %}
         <a href="/performers?page={{ page - 1 }}{{ qs }}" class="btn btn-sm">← Prev</a>
       {% else %}<button class="btn btn-sm" disabled>← Prev</button>{% endif %}
@@ -958,7 +965,8 @@
 
     // debounced server fetch for authoritative result
     _searchTimer = setTimeout(() => {
-      fetch('/performers?search=' + encodeURIComponent(q), { headers: { 'Accept': 'text/html' } })
+      const _sortParam = '{{ sort or "name" }}' !== 'name' ? '&sort={{ sort or "name" }}' : '';
+      fetch('/performers?search=' + encodeURIComponent(q) + _sortParam, { headers: { 'Accept': 'text/html' } })
         .then(r => r.text())
         .then(html => {
           const doc = new DOMParser().parseFromString(html, 'text/html');
