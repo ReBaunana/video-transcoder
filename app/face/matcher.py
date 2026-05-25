@@ -306,7 +306,7 @@ def match_video(
                 UPDATE file_curation
                    SET status = 'suggested'
                  WHERE id = ?
-                   AND status = 'pending'
+                   AND status IN ('pending', 'unknown')
                 """,
                 (file_curation_id,),
             )
