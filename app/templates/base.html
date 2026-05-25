@@ -390,6 +390,49 @@
     [data-theme="light"] #sysBar { background: rgba(240,241,248,.92); }
     [data-theme="dark"]  #sysBar { background: rgba(8,8,16,.92); }
     @media (max-width: 640px) { #sysBar { flex-wrap: wrap; gap: 7px 14px; padding: 5px .9rem; } }
+
+    /* ─── Responsive navbar — wrap actions below logo+nav on smaller screens ── */
+    @media (max-width: 960px) {
+      header {
+        flex-wrap: wrap;
+        row-gap: .4rem;
+        padding: .55rem 1rem;
+        min-height: auto;
+      }
+      .header-left {
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: .75rem;
+      }
+      .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: .3rem;
+        order: 3;
+        justify-content: flex-start;
+      }
+      .header-actions .btn {
+        font-size: .68rem;
+        padding: .3rem .6rem;
+      }
+      /* Sticky thead in tables clears the (now taller) header */
+      #filesTable thead th { top: 92px !important; }
+    }
+    @media (max-width: 640px) {
+      header { padding: .5rem .85rem; }
+      .header-left { gap: .5rem; flex-wrap: wrap; }
+      .nav-tabs { gap: .05rem; height: 28px; padding: .15rem; }
+      .nav-tab { padding: .28rem .55rem; font-size: .67rem; }
+      .header-actions .btn {
+        font-size: .66rem;
+        padding: .3rem .5rem;
+        gap: .28rem;
+      }
+      .header-actions .btn svg {
+        width: 10px;
+        height: 10px;
+      }
+    }
   </style>
   {% block head_extra %}{% endblock %}
 </head>

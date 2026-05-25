@@ -216,6 +216,29 @@
 
   .panel { margin-bottom: 1rem; }
 
+  /* Table panel: don't clip the inner horizontal scrollbar */
+  .tbl-panel {
+    overflow: visible;
+    position: relative;
+  }
+  .tbl-panel::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 40px;
+    background: linear-gradient(to right, transparent, rgba(8,8,16,.6));
+    pointer-events: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  [data-theme="light"] .tbl-panel::after {
+    background: linear-gradient(to right, transparent, rgba(240,241,248,.7));
+  }
+  .tbl-panel.has-overflow::after { opacity: 1; }
+
   /* ─── File table — fixed layout, sticky Actions column ─── */
   .tbl-wrap {
     overflow-x: auto;
@@ -223,7 +246,17 @@
     position: relative;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hover) transparent;
   }
+  .tbl-wrap::-webkit-scrollbar { height: 7px; }
+  .tbl-wrap::-webkit-scrollbar-track { background: transparent; }
+  .tbl-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-hover);
+    border-radius: 99px;
+  }
+  .tbl-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
   #filesTable {
     width: 100%;
@@ -612,10 +645,19 @@
     }
   }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1100px) and (min-width: 641px) {
     .layout { grid-template-columns: 1fr; }
-    .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
-    .mount-card { min-width: 220px; flex: 1 1 220px; }
+    .mounts-sidebar {
+      position: static;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      max-height: none;
+      overflow: visible;
+      gap: .5rem;
+      margin-bottom: 1rem;
+    }
+    .sidebar-title { grid-column: 1 / -1; padding-bottom: .15rem; }
+    .mount-card { min-width: 0; flex: initial; }
     .stats-row { grid-template-columns: repeat(2, 1fr); }
   }
 
@@ -908,7 +950,7 @@
         </section>
 
         <!-- File table -->
-        <div class="panel">
+        <div class="panel tbl-panel">
           <div class="panel-header">
             <div class="panel-title">Files — {{ selected_mount }}</div>
             <div class="panel-title" style="text-transform:none;letter-spacing:0;font-weight:500">
@@ -1511,6 +1553,21 @@
 
     updateAll(); // initial call
     syncFaceWorkersDropdown();
+  })();
+
+  /* ── Table horizontal-overflow hint (right-edge gradient) ───────── */
+  (function() {
+    const wrap = document.querySelector('.tbl-wrap');
+    const panel = document.querySelector('.tbl-panel');
+    if (!wrap || !panel) return;
+    function checkOverflow() {
+      const hasMore = wrap.scrollWidth > wrap.clientWidth
+        && wrap.scrollLeft < wrap.scrollWidth - wrap.clientWidth - 2;
+      panel.classList.toggle('has-overflow', hasMore);
+    }
+    wrap.addEventListener('scroll', checkOverflow, { passive: true });
+    window.addEventListener('resize', checkOverflow);
+    setTimeout(checkOverflow, 100);
   })();
 </script>
 {% endblock %}
