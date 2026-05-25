@@ -528,6 +528,44 @@
 
   .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
 
+  /* Face status panel */
+  .face-status {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: .85rem;
+    background: var(--surface);
+  }
+  .face-status-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .55rem .8rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: .8rem;
+    color: var(--text);
+    text-align: left;
+  }
+  .face-status-title { font-weight: 600; flex-shrink: 0; }
+  .face-status-summary { flex: 1; color: var(--text-muted); font-size: .75rem; }
+  .face-status-chevron { flex-shrink: 0; font-size: .65rem; transition: transform .15s; }
+  .face-status[data-expanded="true"] .face-status-chevron { transform: rotate(180deg); }
+  .face-status-body { padding: .5rem .8rem .7rem; border-top: 1px solid var(--border); }
+  .face-status-row { display: flex; align-items: center; gap: .6rem; font-size: .78rem; margin-bottom: .3rem; }
+  .face-status-meta { color: var(--text-muted); font-size: .73rem; }
+  .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: monospace; }
+  .face-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .face-status-dot.running { background: #22c55e; box-shadow: 0 0 0 2px #22c55e33; animation: pulse 1.5s infinite; }
+  .face-status-error { font-size: .72rem; color: #ef4444; margin-top: .2rem; }
+  .face-status-row.warning { color: #f59e0b; font-weight: 500; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  @media (max-width: 640px) {
+    .face-status-header { flex-wrap: wrap; }
+    .face-status-summary { width: 100%; order: 3; }
+  }
+
   /* ─── Mobile mount select (hidden on desktop) ─── */
   .mount-select-mobile { display: none; }
   .mount-select-mobile select {
@@ -789,6 +827,38 @@
             <a href="/library?mount={{ selected_mount }}&status=skipped"  class="filter-pill {{ 'active' if status_filter == 'skipped'  else '' }}">Skipped</a>
           </nav>
         </div>
+
+        <!-- Face recognition status panel -->
+        <section id="face-status-panel" class="face-status" data-expanded="false">
+          <button class="face-status-header" onclick="toggleFaceStatus()" aria-expanded="false">
+            <span class="face-status-title">Face Recognition</span>
+            <span class="face-status-summary" data-role="summary">Loading…</span>
+            <span class="face-status-chevron" aria-hidden="true">▼</span>
+          </button>
+          <div class="face-status-body" hidden>
+            <div data-role="state-idle" hidden>
+              <span data-role="idle-text"></span>
+            </div>
+            <div data-role="state-running" hidden>
+              <div class="face-status-row">
+                <span class="face-status-dot running"></span>
+                <span data-role="running-label"></span>
+              </div>
+              <div data-role="current-file" class="face-status-file"></div>
+              <div class="face-status-row face-status-meta">
+                <span data-role="throughput"></span>
+                <span data-role="matched"></span>
+                <span data-role="failed"></span>
+              </div>
+            </div>
+            <div data-role="state-warning" hidden>
+              <div class="face-status-row warning">
+                <span>⚠ High failure rate (<span data-role="failure-rate"></span>%)</span>
+              </div>
+              <div data-role="last-error" class="face-status-error"></div>
+            </div>
+          </div>
+        </section>
 
         <!-- File table -->
         <div class="panel">
@@ -1227,13 +1297,88 @@
   // Decide once on page load whether to show TPDB controls.
   checkTpdbAvailability().then(ok => _showTpdbControls(!!ok));
 
-  /* ── Live mount stats — poll every 30 s ─────────────────────────── */
+  /* ── Face status panel ─────────────────────────────────── */
+  function toggleFaceStatus() {
+    const panel = document.getElementById('face-status-panel');
+    if (!panel) return;
+    const expanded = panel.dataset.expanded === 'true';
+    panel.dataset.expanded = !expanded;
+    panel.querySelector('.face-status-header').setAttribute('aria-expanded', !expanded);
+    const body = panel.querySelector('.face-status-body');
+    body.hidden = expanded;
+  }
+
+  function renderFaceStatus(s) {
+    const panel = document.getElementById('face-status-panel');
+    if (!panel || !s) return 30000;
+    const isRunning = s.running_jobs && s.running_jobs.length > 0;
+    const isWarning = s.failure_rate_pct > 50;
+
+    // Summary line (always visible in header)
+    const summary = panel.querySelector('[data-role="summary"]');
+    if (isRunning) {
+      summary.textContent = `Running · ${s.running_jobs.length} job(s) · ${s.done_total} matched`;
+    } else if (s.last_finished_at) {
+      const ago = Math.floor((Date.now()/1000 - s.last_finished_at) / 60);
+      summary.textContent = `Idle · ${ago}m ago · ${s.done_total} matched / ${s.failed_total} failed`;
+    } else {
+      summary.textContent = `${s.done_total} matched / ${s.failed_total} failed`;
+    }
+
+    // Auto-expand when running
+    if (isRunning && panel.dataset.expanded !== 'true') {
+      panel.dataset.expanded = 'true';
+      panel.querySelector('.face-status-header').setAttribute('aria-expanded', 'true');
+      panel.querySelector('.face-status-body').hidden = false;
+    }
+
+    // Show correct state div
+    const stateIdle = panel.querySelector('[data-role="state-idle"]');
+    const stateRunning = panel.querySelector('[data-role="state-running"]');
+    const stateWarning = panel.querySelector('[data-role="state-warning"]');
+    stateIdle.hidden = isRunning || isWarning;
+    stateRunning.hidden = !isRunning;
+    stateWarning.hidden = !isWarning;
+
+    if (isRunning) {
+      const types = [...new Set(s.running_jobs.map(j => j.job_type))].join(', ');
+      panel.querySelector('[data-role="running-label"]').textContent =
+        `${s.running_jobs.length} job(s) · ${types}${s.queued ? ` · ${s.queued} queued` : ''}`;
+      const cf = panel.querySelector('[data-role="current-file"]');
+      cf.textContent = s.current_file ? `Current: ${s.current_file}` : '';
+      panel.querySelector('[data-role="throughput"]').textContent =
+        s.throughput_per_hour ? `${Math.round(s.throughput_per_hour)}/hr` : '';
+      panel.querySelector('[data-role="matched"]').textContent = `${s.done_total} matched`;
+      panel.querySelector('[data-role="failed"]').textContent = `${s.failed_total} failed`;
+    }
+
+    if (isWarning) {
+      panel.querySelector('[data-role="failure-rate"]').textContent = s.failure_rate_pct;
+      const err = s.recent_failures && s.recent_failures[0];
+      panel.querySelector('[data-role="last-error"]').textContent =
+        err ? `Last error: ${err.last_error || 'unknown'}` : '';
+    }
+
+    // Adaptive polling — return recommended interval in ms
+    const expanded = panel.dataset.expanded === 'true';
+    if (isRunning) return expanded ? 3000 : 10000;
+    return 30000;
+  }
+
+  /* ── Live mount stats + face status — adaptive polling ─────────── */
   (function() {
     const selectedMount = document.querySelector('.stats-row[data-selected-mount]')
       ?.dataset.selectedMount || null;
 
-    function updateStats() {
-      fetch('/api/library-stats', { cache: 'no-store' })
+    let _faceStatusTimer = null;
+
+    function scheduleNext(ms) {
+      clearTimeout(_faceStatusTimer);
+      _faceStatusTimer = setTimeout(updateAll, ms);
+    }
+
+    function updateAll() {
+      const statsPromise = fetch('/api/library-stats', { cache: 'no-store' })
         .then(r => r.json())
         .then(mounts => {
           mounts.forEach(m => {
@@ -1281,9 +1426,18 @@
           });
         })
         .catch(() => {});
+
+      const facePromise = fetch('/api/face-status', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(s => renderFaceStatus(s))
+        .catch(() => 30000);
+
+      Promise.all([statsPromise, facePromise]).then(([, interval]) => {
+        scheduleNext(typeof interval === 'number' ? interval : 30000);
+      });
     }
 
-    setInterval(updateStats, 30000);
+    updateAll(); // initial call
   })();
 </script>
 {% endblock %}

@@ -563,6 +563,128 @@ async def api_library_stats(request: Request) -> JSONResponse:
     ])
 
 
+@router.get('/api/face-status')
+async def api_face_status(request: Request) -> JSONResponse:
+    """Live face-recognition queue snapshot — running jobs, throughput, ETA."""
+    conn = _db(request)
+
+    running_rows = conn.execute(
+        """
+        SELECT id, job_type, started_at
+          FROM face_recognition_job
+         WHERE status = 'running'
+         ORDER BY started_at
+        """
+    ).fetchall()
+    running_jobs = [
+        {
+            'id':         int(r['id']),
+            'job_type':   r['job_type'],
+            'started_at': r['started_at'],
+        }
+        for r in running_rows
+    ]
+
+    current_file: str | None = None
+    if running_jobs:
+        latest = conn.execute(
+            """
+            SELECT fc.path
+              FROM face_match_result fmr
+              JOIN file_curation fc ON fc.id = fmr.file_curation_id
+             WHERE fmr.rowid = (SELECT MAX(rowid) FROM face_match_result)
+             LIMIT 1
+            """
+        ).fetchone()
+        if latest and latest['path']:
+            current_file = os.path.basename(latest['path'])
+
+    queued_row = conn.execute(
+        "SELECT COUNT(*) FROM face_recognition_job WHERE status IN ('queued', 'pending')"
+    ).fetchone()
+    queued = int(queued_row[0] or 0) if queued_row else 0
+
+    totals_row = conn.execute(
+        """
+        SELECT
+          SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),
+          SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END)
+          FROM face_recognition_job
+        """
+    ).fetchone()
+    done_total = int((totals_row[0] if totals_row else 0) or 0)
+    failed_total = int((totals_row[1] if totals_row else 0) or 0)
+
+    failure_rate_row = conn.execute(
+        """
+        SELECT
+          SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) * 100 / COUNT(*)
+          FROM (
+            SELECT status FROM face_recognition_job
+             WHERE status IN ('done','failed')
+             ORDER BY id DESC LIMIT 50
+          )
+        """
+    ).fetchone()
+    failure_rate_pct = int(failure_rate_row[0] or 0) if failure_rate_row and failure_rate_row[0] is not None else 0
+
+    recent_failure_rows = conn.execute(
+        """
+        SELECT id, last_error, finished_at
+          FROM face_recognition_job
+         WHERE status='failed'
+         ORDER BY id DESC LIMIT 3
+        """
+    ).fetchall()
+    recent_failures = [
+        {
+            'id':          int(r['id']),
+            'last_error':  r['last_error'],
+            'finished_at': r['finished_at'],
+        }
+        for r in recent_failure_rows
+    ]
+
+    throughput_row = conn.execute(
+        """
+        SELECT COUNT(*) * 3600.0 / (strftime('%s','now') - MIN(finished_at))
+          FROM face_recognition_job
+         WHERE status = 'done'
+           AND typeof(finished_at) = 'integer'
+           AND finished_at > strftime('%s','now') - 3600
+        HAVING COUNT(*) > 0
+        """
+    ).fetchone()
+    throughput_per_hour = float(throughput_row[0]) if throughput_row and throughput_row[0] is not None else 0.0
+
+    if throughput_per_hour > 0 and queued > 0:
+        eta_minutes: int | None = int(queued / (throughput_per_hour / 60))
+    else:
+        eta_minutes = None
+
+    last_finished_row = conn.execute(
+        """
+        SELECT finished_at FROM face_recognition_job
+         WHERE status IN ('done','failed') AND typeof(finished_at) = 'integer'
+         ORDER BY finished_at DESC LIMIT 1
+        """
+    ).fetchone()
+    last_finished_at = last_finished_row[0] if last_finished_row else None
+
+    return JSONResponse({
+        'running_jobs':        running_jobs,
+        'current_file':        current_file,
+        'queued':              queued,
+        'done_total':          done_total,
+        'failed_total':        failed_total,
+        'recent_failures':     recent_failures,
+        'throughput_per_hour': throughput_per_hour,
+        'eta_minutes':         eta_minutes,
+        'failure_rate_pct':    failure_rate_pct,
+        'last_finished_at':    last_finished_at,
+    })
+
+
 @router.post('/library/files/{file_id}/tpdb')
 async def library_file_tpdb(file_id: int, request: Request) -> JSONResponse:
     """Lookup a single file against ThePornDB and auto-apply if confident."""
