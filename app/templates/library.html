@@ -221,23 +221,26 @@
     overflow-x: auto;
     /* allow the sticky Actions column to escape the scroll edge */
     position: relative;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
 
   #filesTable {
     width: 100%;
+    min-width: 1100px;
     border-collapse: collapse;
     font-size: .77rem;
     table-layout: fixed;
   }
 
   /* Column widths — content cells use max-width:0 + ellipsis */
-  #filesTable col.col-cb        { width: 28px; }
-  #filesTable col.col-file      { width: 22%; }
-  #filesTable col.col-proposed  { width: 28%; }
-  #filesTable col.col-perf      { width: 16%; }
-  #filesTable col.col-conf      { width: 80px; }
-  #filesTable col.col-status    { width: 74px; }
-  #filesTable col.col-actions   { width: 160px; }
+  #filesTable col.col-cb       { width: 32px; }
+  #filesTable col.col-file     { width: 24%; min-width: 200px; }
+  #filesTable col.col-proposed { width: 32%; min-width: 240px; }
+  #filesTable col.col-perf     { width: 18%; min-width: 130px; }
+  #filesTable col.col-conf     { width: 72px; }
+  #filesTable col.col-status   { width: 90px; }
+  #filesTable col.col-actions  { width: 164px; }
 
   #filesTable th {
     text-align: left;
@@ -251,6 +254,13 @@
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
   }
+  #filesTable thead th {
+    position: sticky;
+    top: 56px; /* clear fixed top bar (header min-height) */
+    z-index: 4;
+    background: var(--surface);
+    box-shadow: 0 1px 0 var(--border);
+  }
   #filesTable td {
     padding: .55rem .8rem;
     color: var(--text);
@@ -262,12 +272,19 @@
   }
 
   /* Sticky Actions column — always visible on the right */
-  #filesTable th.th-actions,
+  #filesTable th.th-actions {
+    position: sticky;
+    right: 0;
+    background: var(--surface);
+    z-index: 5;
+    text-align: right;
+    box-shadow: -8px 0 12px -8px rgba(0,0,0,.35);
+  }
   #filesTable td.td-actions {
     position: sticky;
     right: 0;
     background: var(--surface);
-    z-index: 1;
+    z-index: 3;
     text-align: right;
     box-shadow: -8px 0 12px -8px rgba(0,0,0,.35);
   }
@@ -587,6 +604,14 @@
     box-shadow: 0 0 0 3px var(--accent-dim);
   }
 
+  @media (max-width: 1280px) {
+    #filesTable col.col-conf,
+    #filesTable thead th:nth-child(5),
+    #filesTable tbody td:nth-child(5) {
+      display: none;
+    }
+  }
+
   @media (max-width: 1100px) {
     .layout { grid-template-columns: 1fr; }
     .mounts-sidebar { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
@@ -610,11 +635,11 @@
 
     #filesTable tbody tr {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: auto 1fr auto;
       grid-template-areas:
-        "file   status"
-        "proposed proposed"
-        "perf   actions";
+        "cb file   status"
+        "cb proposed proposed"
+        "cb perf   actions";
       column-gap: .5rem;
       row-gap: .22rem;
       border: 1px solid var(--border);
@@ -629,8 +654,13 @@
     #filesTable tbody tr.row-skipped  { opacity: .55; }
     #filesTable tbody tr:hover        { background: var(--surface-2); }
 
-    /* Checkbox → hidden */
-    #filesTable tbody td:nth-child(1) { display: none; }
+    /* Checkbox → cb area */
+    #filesTable tbody td:nth-child(1) {
+      display: block;
+      grid-area: cb;
+      align-self: center;
+      padding: 0 .4rem 0 0;
+    }
 
     /* Reset all td styles */
     #filesTable tbody td {
@@ -643,13 +673,13 @@
 
     #filesTable .td-file {
       grid-area: file;
-      word-break: break-all;
+      overflow-wrap: anywhere;
       font-size: .7rem;
       line-height: 1.35;
     }
     #filesTable .td-proposed {
       grid-area: proposed;
-      word-break: break-all;
+      overflow-wrap: anywhere;
       font-size: .67rem;
       line-height: 1.3;
     }
@@ -684,6 +714,10 @@
       flex-wrap: wrap;
       gap: .25rem;
       justify-content: flex-end;
+    }
+    #filesTable .td-actions .btn {
+      min-width: 28px;
+      padding: .3rem .4rem;
     }
 
     /* colspan empty-state row */
