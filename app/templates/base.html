@@ -415,8 +415,6 @@
         font-size: .68rem;
         padding: .3rem .6rem;
       }
-      /* Sticky thead in tables clears the (now taller) header */
-      #filesTable thead th { top: 96px !important; }
     }
     @media (max-width: 640px) {
       header { padding: .5rem .85rem; }
@@ -518,6 +516,14 @@
     if (v < 0.05) return '0 MB/s';
     return (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' MB/s';
   }
+  /* Dynamically set --topbar-h so sticky thead always clears the full topBar */
+  function _setTopbarOffset() {
+    const tb = document.getElementById('topBar');
+    if (tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+  }
+  _setTopbarOffset();
+  window.addEventListener('resize', _setTopbarOffset);
+
   setInterval(async () => {
     try {
       const d = await fetch('/api/sysinfo').then(r => r.json());

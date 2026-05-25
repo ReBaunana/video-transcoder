@@ -23,8 +23,8 @@
   /* ─── Mount sidebar ────────────────────────────── */
   .mounts-sidebar {
     position: sticky;
-    top: calc(56px + .6rem);
-    max-height: calc(100vh - 5rem);
+    top: calc(var(--topbar-h, 84px) + .6rem);
+    max-height: calc(100vh - var(--topbar-h, 84px) - 2rem);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -243,11 +243,9 @@
   /* ─── File table — fixed layout, sticky Actions column ─── */
   .tbl-wrap {
     overflow-x: auto;
-    /* allow the sticky Actions column to escape the scroll edge */
     position: relative;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
-    /* Firefox */
     scrollbar-width: thin;
     scrollbar-color: var(--border-hover) transparent;
   }
@@ -261,20 +259,18 @@
 
   #filesTable {
     width: 100%;
-    min-width: 1100px;
+    min-width: 700px;
     border-collapse: collapse;
     font-size: .77rem;
     table-layout: fixed;
   }
 
-  /* Column widths — content cells use max-width:0 + ellipsis */
-  #filesTable col.col-cb       { width: 32px; }
-  #filesTable col.col-file     { width: 24%; min-width: 200px; }
-  #filesTable col.col-proposed { width: 32%; min-width: 240px; }
-  #filesTable col.col-perf     { width: 18%; min-width: 130px; }
-  #filesTable col.col-conf     { width: 72px; }
-  #filesTable col.col-status   { width: 90px; }
-  #filesTable col.col-actions  { width: 164px; }
+  /* Column widths: 5 cols — CB | Name (stacked) | Performers | Status | Actions */
+  #filesTable col.col-cb      { width: 36px; }
+  #filesTable col.col-name    { width: 42%; min-width: 260px; }
+  #filesTable col.col-perf    { width: 22%; min-width: 120px; }
+  #filesTable col.col-status  { width: 110px; }
+  #filesTable col.col-actions { width: 140px; }
 
   #filesTable th {
     text-align: left;
@@ -290,7 +286,7 @@
   }
   #filesTable thead th {
     position: sticky;
-    top: 56px; /* clear fixed top bar (header min-height) */
+    top: var(--topbar-h, 84px); /* dynamically set by JS in base.html */
     z-index: 4;
     background: var(--surface);
     box-shadow: 0 1px 0 var(--border);
@@ -302,7 +298,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 0; /* required for ellipsis in table-layout:fixed cells */
+    max-width: 0;
   }
 
   /* Sticky Actions column — always visible on the right */
@@ -338,14 +334,51 @@
   #filesTable tbody tr.row-skipped  { opacity: .55; }
   #filesTable tbody tr.row-selected { background: var(--accent-dim) !important; }
 
-  .td-file,
-  .td-proposed {
+  /* Stacked name cell: original filename + proposed rename */
+  .td-name {
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: normal;
+    max-width: 0;
+    padding-top: .4rem;
+    padding-bottom: .4rem;
+    line-height: 1.3;
+  }
+  .td-name-orig {
     font-family: 'SF Mono', Menlo, monospace;
     font-size: .73rem;
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
   }
-  .td-proposed { color: var(--accent); }
-  .td-performers { color: var(--text-muted); font-size: .72rem; }
+  .td-name-proposed {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: .7rem;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--accent);
+    margin-top: .18rem;
+  }
+  .td-name-proposed::before { content: '→ '; opacity: .6; }
+
+  .td-performers { color: var(--text-muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
+
+  /* Status cell with inline confidence % */
+  .status-conf { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+  .conf-inline {
+    font-size: .64rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .conf-inline.high { color: var(--green); }
+  .conf-inline.mid  { color: var(--yellow); }
+  .conf-inline.low  { color: var(--red); }
 
   .td-actions {
     /* override generic ellipsis — we want buttons rendered side by side */
@@ -360,27 +393,6 @@
     align-items: center;
   }
 
-  /* ─── Confidence bar ────────────────────────────── */
-  .conf-wrap { display: flex; align-items: center; gap: .45rem; min-width: 70px; }
-  .conf-bar {
-    flex: 1;
-    height: 5px;
-    background: var(--surface-3);
-    border-radius: 99px;
-    overflow: hidden;
-    max-width: 50px;
-  }
-  .conf-fill { height: 100%; border-radius: 99px; }
-  .conf-fill.high { background: var(--green); }
-  .conf-fill.mid  { background: var(--yellow); }
-  .conf-fill.low  { background: var(--red); }
-  .conf-pct {
-    font-size: .68rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    min-width: 28px;
-    color: var(--text-muted);
-  }
 
   /* ─── Badges (status variants) ──────────────────── */
   .badge::before {
@@ -639,13 +651,6 @@
     box-shadow: 0 0 0 3px var(--accent-dim);
   }
 
-  @media (max-width: 1280px) {
-    #filesTable col.col-conf,
-    #filesTable thead th:nth-child(5),
-    #filesTable tbody td:nth-child(5) {
-      display: none;
-    }
-  }
 
   @media (max-width: 1100px) and (min-width: 641px) {
     .layout { grid-template-columns: 1fr; }
@@ -672,7 +677,7 @@
     .action-bar { padding: .55rem .7rem; gap: .4rem; }
     .filter-pills { flex-wrap: wrap; border-radius: var(--radius-sm); }
 
-    /* ── Table → card stack ─────────────────── */
+    /* ── Table → card stack (5-col structure) ─────────────────── */
     .tbl-wrap { overflow: visible; }
     #filesTable, #filesTable tbody { display: block; }
     #filesTable colgroup, #filesTable thead { display: none; }
@@ -681,11 +686,10 @@
       display: grid;
       grid-template-columns: auto 1fr auto;
       grid-template-areas:
-        "cb file   status"
-        "cb proposed proposed"
+        "cb name   status"
         "cb perf   actions";
       column-gap: .5rem;
-      row-gap: .22rem;
+      row-gap: .3rem;
       border: 1px solid var(--border);
       border-left: 3px solid var(--border);
       border-radius: var(--radius-sm);
@@ -715,36 +719,40 @@
       padding: 0;
     }
 
-    #filesTable .td-file {
-      grid-area: file;
-      overflow-wrap: anywhere;
-      font-size: .7rem;
-      line-height: 1.35;
-    }
-    #filesTable .td-proposed {
-      grid-area: proposed;
-      overflow-wrap: anywhere;
-      font-size: .67rem;
+    /* Stacked name cell in card mode */
+    #filesTable .td-name {
+      grid-area: name;
+      padding: 0;
       line-height: 1.3;
     }
+    #filesTable .td-name .td-name-orig {
+      font-size: .72rem;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+    #filesTable .td-name .td-name-proposed {
+      font-size: .67rem;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
     #filesTable .td-performers {
       grid-area: perf;
       font-size: .65rem;
       align-self: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
-    /* Confidence → hidden */
-    #filesTable tbody td:nth-child(5) { display: none; }
-
-    /* Status badge */
-    #filesTable tbody td:nth-child(6) {
+    /* Status (now 3rd column = index 3) */
+    #filesTable tbody td:nth-child(3) {
       grid-area: status;
       display: flex;
       align-items: flex-start;
       justify-content: flex-end;
     }
 
-    /* Actions */
+    /* Actions (4th column) */
     #filesTable .td-actions {
       grid-area: actions;
       position: static;
@@ -963,20 +971,16 @@
             <table id="filesTable">
               <colgroup>
                 <col class="col-cb">
-                <col class="col-file">
-                <col class="col-proposed">
+                <col class="col-name">
                 <col class="col-perf">
-                <col class="col-conf">
                 <col class="col-status">
                 <col class="col-actions">
               </colgroup>
               <thead>
                 <tr>
                   <th><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
-                  <th>Filename</th>
-                  <th>Proposed name</th>
+                  <th>Filename / Proposed name</th>
                   <th>Performers</th>
-                  <th>Confidence</th>
                   <th>Status</th>
                   <th class="th-actions">Actions</th>
                 </tr>
@@ -984,27 +988,28 @@
               <tbody>
               {% for f in files %}
                 {% set conf = f.extraction_confidence or 0 %}
+                {% set conf_pct = (conf * 100) | int %}
                 {% set conf_cls = 'high' if conf >= 0.85 else ('mid' if conf >= 0.60 else 'low') %}
                 <tr data-id="{{ f.id }}" class="row-{{ f.status }}">
                   <td><input type="checkbox" class="row-cb" value="{{ f.id }}" onchange="updateBatchBar()"></td>
-                  <td class="td-file" title="{{ f.filename }}">{{ f.filename }}</td>
-                  <td class="td-proposed" title="{{ f.proposed_filename or '' }}">
-                    {% if f.proposed_filename %}{{ f.proposed_filename }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
-                    {% if f.tpdb_scene_id %}<span class="tpdb-badge" title="Enriched from ThePornDB">TPDB</span>{% endif %}
+                  <td class="td-name" title="{{ f.filename }}{% if f.proposed_filename %} → {{ f.proposed_filename }}{% endif %}">
+                    <div class="td-name-orig">{{ f.filename }}</div>
+                    {% if f.proposed_filename %}
+                    <div class="td-name-proposed">{{ f.proposed_filename }}{% if f.tpdb_scene_id %}&nbsp;<span class="tpdb-badge" title="Enriched from ThePornDB">TPDB</span>{% endif %}</div>
+                    {% endif %}
                   </td>
                   <td class="td-performers" title="{{ (f.performers or []) | join(', ') }}">
                     {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
                     {% if f.face_suggestions and f.face_suggestions > 0 %}
-                    <a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face suggestion{{ 's' if f.face_suggestions != 1 else '' }}</a>
+                    <a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face{{ 's' if f.face_suggestions != 1 else '' }}</a>
                     {% endif %}
                   </td>
                   <td>
-                    <div class="conf-wrap">
-                      <div class="conf-bar"><div class="conf-fill {{ conf_cls }}" style="width: {{ (conf * 100) | int }}%"></div></div>
-                      <span class="conf-pct">{{ (conf * 100) | int }}%</span>
+                    <div class="status-conf">
+                      <span class="badge badge-{{ f.status }}">{{ f.status }}</span>
+                      {% if conf_pct > 0 %}<span class="conf-inline {{ conf_cls }}">{{ conf_pct }}%</span>{% endif %}
                     </div>
                   </td>
-                  <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
                   <td class="td-actions">
                     <span class="actions-inner">
                       {% if f.status != 'renamed' %}
@@ -1029,7 +1034,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="7" class="empty" style="padding:3rem 1rem">No files match this filter. Run a mount scan to populate.</td></tr>
+                <tr><td colspan="5" class="empty" style="padding:3rem 1rem">No files match this filter. Run a mount scan to populate.</td></tr>
               {% endfor %}
               </tbody>
             </table>
