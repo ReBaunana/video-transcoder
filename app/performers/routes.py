@@ -587,7 +587,7 @@ async def performers_confirm_video(
         """
         SELECT id FROM face_match_result
          WHERE performer_id = ? AND file_curation_id = ? AND status = 'pending'
-         ORDER BY score DESC LIMIT 1
+         ORDER BY similarity DESC LIMIT 1
         """,
         (performer_id, file_id),
     ).fetchone()
