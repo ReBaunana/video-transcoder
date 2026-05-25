@@ -1374,7 +1374,8 @@
       panel.querySelector('[data-role="running-label"]').textContent =
         `${s.running_jobs.length} job(s) · ${types}${s.queued ? ` · ${s.queued} queued` : ''}`;
       const cf = panel.querySelector('[data-role="current-file"]');
-      cf.textContent = s.current_file ? `Current: ${s.current_file}` : '';
+      const files = s.current_files && s.current_files.length ? s.current_files : (s.current_file ? [s.current_file] : []);
+      cf.textContent = files.length ? files.map((f, i) => `[${i+1}] ${f}`).join('  ') : '';
       panel.querySelector('[data-role="throughput"]').textContent =
         s.throughput_per_hour ? `${Math.round(s.throughput_per_hour)}/hr` : '';
       panel.querySelector('[data-role="matched"]').textContent = `${s.done_total} matched`;

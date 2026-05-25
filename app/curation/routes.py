@@ -586,18 +586,19 @@ async def api_face_status(request: Request) -> JSONResponse:
     ]
 
     current_file: str | None = None
+    current_files: list[str] = []
     if running_jobs:
-        latest = conn.execute(
+        running_file_rows = conn.execute(
             """
             SELECT fc.path
-              FROM face_match_result fmr
-              JOIN file_curation fc ON fc.id = fmr.file_curation_id
-             WHERE fmr.rowid = (SELECT MAX(rowid) FROM face_match_result)
-             LIMIT 1
+              FROM face_recognition_job j
+              JOIN file_curation fc ON fc.id = j.file_curation_id
+             WHERE j.status = 'running'
+             ORDER BY j.started_at DESC
             """
-        ).fetchone()
-        if latest and latest['path']:
-            current_file = os.path.basename(latest['path'])
+        ).fetchall()
+        current_files = [os.path.basename(r['path']) for r in running_file_rows if r['path']]
+        current_file = current_files[0] if current_files else None
 
     queued_row = conn.execute(
         "SELECT COUNT(*) FROM face_recognition_job WHERE status IN ('queued', 'pending')"
@@ -674,6 +675,7 @@ async def api_face_status(request: Request) -> JSONResponse:
     return JSONResponse({
         'running_jobs':        running_jobs,
         'current_file':        current_file,
+        'current_files':       current_files,
         'queued':              queued,
         'done_total':          done_total,
         'failed_total':        failed_total,
