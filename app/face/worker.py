@@ -253,10 +253,7 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
               FROM file_performer fp
               JOIN file_curation fc ON fc.id = fp.file_curation_id
              WHERE fc.status NOT IN ('skipped', 'renamed')
-               AND (
-                   SELECT COUNT(*) FROM file_performer fp2
-                    WHERE fp2.file_curation_id = fp.file_curation_id
-               ) = 1
+               AND fp.position = 0
                AND NOT EXISTS (
                    SELECT 1 FROM face_recognition_job j
                     WHERE j.file_curation_id = fp.file_curation_id
@@ -319,11 +316,8 @@ def enqueue_seed_for_performer(conn: sqlite3.Connection, performer_id: int) -> i
               FROM file_performer fp
               JOIN file_curation fc ON fc.id = fp.file_curation_id
              WHERE fp.performer_id = ?
+               AND fp.position = 0
                AND fp.source IN ('auto', 'manual')
-               AND (
-                   SELECT COUNT(*) FROM file_performer fp2
-                    WHERE fp2.file_curation_id = fp.file_curation_id
-               ) = 1
                AND NOT EXISTS (
                    SELECT 1 FROM face_recognition_job j
                     WHERE j.file_curation_id = fp.file_curation_id
@@ -574,15 +568,16 @@ def _process_job(conn: sqlite3.Connection, job: dict) -> None:
             """
             SELECT performer_id FROM file_performer
              WHERE file_curation_id = ?
+             ORDER BY position LIMIT 1
             """,
             (file_id,),
         )
-        rows = cur.fetchall()
-        if len(rows) != 1:
+        row = cur.fetchone()
+        if row is None:
             raise RuntimeError(
-                f"seed_known requires exactly one performer, got {len(rows)} for file_id={file_id}"
+                f"seed_known: no performer attached for file_id={file_id}"
             )
-        performer_id = int(rows[0][0])
+        performer_id = int(row[0])
         stored = extractor_mod.process_video_for_seeding(
             conn, file_id, performer_id, path, duration,
         )
