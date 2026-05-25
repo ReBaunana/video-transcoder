@@ -662,7 +662,11 @@
 
     <div class="detail-header">
       {% if selected_performer.profile_thumb %}
-        <img class="detail-thumb" src="{{ selected_performer.profile_thumb }}" alt="{{ selected_performer.canonical_name }}">
+        <img class="detail-thumb" src="{{ selected_performer.profile_thumb }}" alt="{{ selected_performer.canonical_name }}"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="detail-thumb" style="display:none;align-items:center;justify-content:center;color:var(--text-dim)">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+        </div>
       {% else %}
         <div class="detail-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-dim)">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
@@ -813,7 +817,13 @@
        data-ready="{{ '1' if p.is_reference_ready else '0' }}">
       <div class="perf-thumb-wrap">
         {% if p.profile_thumb %}
-          <img class="perf-thumb" src="{{ p.profile_thumb }}" alt="{{ p.canonical_name }}">
+          <img class="perf-thumb" src="{{ p.profile_thumb }}" alt="{{ p.canonical_name }}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="perf-thumb-placeholder" style="display:none">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+            </svg>
+          </div>
         {% else %}
           <div class="perf-thumb-placeholder">
             <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
