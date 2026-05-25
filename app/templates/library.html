@@ -243,13 +243,16 @@
   /* ─── File table — fixed layout, sticky Actions column ─── */
   .tbl-wrap {
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - var(--topbar-h, 84px) - 320px);
+    min-height: 300px;
     position: relative;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     scrollbar-color: var(--border-hover) transparent;
   }
-  .tbl-wrap::-webkit-scrollbar { height: 7px; }
+  .tbl-wrap::-webkit-scrollbar { width: 7px; height: 7px; }
   .tbl-wrap::-webkit-scrollbar-track { background: transparent; }
   .tbl-wrap::-webkit-scrollbar-thumb {
     background: var(--border-hover);
@@ -286,7 +289,7 @@
   }
   #filesTable thead th {
     position: sticky;
-    top: var(--topbar-h, 84px); /* dynamically set by JS in base.html */
+    top: 0;
     z-index: 4;
     background: var(--surface);
     box-shadow: 0 1px 0 var(--border);
@@ -666,6 +669,9 @@
     .sidebar-title { grid-column: 1 / -1; padding-bottom: .15rem; }
     .mount-card { min-width: 0; flex: initial; }
     .stats-row { grid-template-columns: repeat(2, 1fr); }
+    /* At tablet the page scrolls naturally — release the fixed container */
+    .tbl-wrap { max-height: none; overflow-y: visible; }
+    #filesTable thead th { position: static; top: auto; }
   }
 
   @media (max-width: 640px) {
@@ -678,7 +684,7 @@
     .filter-pills { flex-wrap: wrap; border-radius: var(--radius-sm); }
 
     /* ── Table → card stack (5-col structure) ─────────────────── */
-    .tbl-wrap { overflow: visible; }
+    .tbl-wrap { overflow: visible; max-height: none; min-height: 0; }
     #filesTable, #filesTable tbody { display: block; }
     #filesTable colgroup, #filesTable thead { display: none; }
 
@@ -744,8 +750,8 @@
       overflow-wrap: anywhere;
     }
 
-    /* Status (now 3rd column = index 3) */
-    #filesTable tbody td:nth-child(3) {
+    /* Status is 4th column (cb=1, name=2, perf=3, status=4) */
+    #filesTable tbody td:nth-child(4) {
       grid-area: status;
       display: flex;
       align-items: flex-start;
