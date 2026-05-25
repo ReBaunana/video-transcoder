@@ -19,7 +19,7 @@ SIMILARITY_HIGH = 0.55      # auto-suggest, green
 SIMILARITY_MEDIUM = 0.42    # show as yellow, needs confirmation
 MIN_FRAME_MATCHES = 3       # performer must appear in >= 3 frames
 AUTO_ACCEPT_SINGLE_MATCH = False  # legacy flag — kept for compat; auto-accept uses AUTO_ACCEPT_THRESHOLD
-AUTO_ACCEPT_THRESHOLD = 0.72     # rank-1 sim >= this with clear gap triggers automatic accept
+AUTO_ACCEPT_THRESHOLD = 0.55     # rank-1 sim >= this with clear gap triggers automatic accept
 
 
 class PerformerIndex:

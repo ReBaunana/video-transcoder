@@ -292,6 +292,40 @@ def _run_auto_rename(db_path: str) -> None:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
 
+        # Batch-accept pending face matches that meet the auto-accept threshold.
+        # Handles existing rows that were stored before the threshold was reached
+        # and any matches processed while the app was offline.
+        from app.face.matcher import accept_match as _accept_match, AUTO_ACCEPT_THRESHOLD as _AAT
+        pending_fc_ids = [
+            row[0] for row in conn.execute(
+                "SELECT DISTINCT file_curation_id FROM face_match_result WHERE status = 'pending'"
+            ).fetchall()
+        ]
+        batch_accepted = 0
+        for fc_id in pending_fc_ids:
+            candidates = conn.execute(
+                """SELECT id, similarity, match_count FROM face_match_result
+                    WHERE file_curation_id = ? AND status = 'pending'
+                    ORDER BY match_count DESC, similarity DESC""",
+                (fc_id,),
+            ).fetchall()
+            if not candidates:
+                continue
+            primary = candidates[0]
+            secondaries = candidates[1:]
+            top_is_dominant = (
+                not secondaries
+                or secondaries[0][2] < 0.7 * primary[2]
+            )
+            if primary[1] >= _AAT and top_is_dominant:
+                try:
+                    _accept_match(conn, primary[0])
+                    batch_accepted += 1
+                except Exception:
+                    _log.exception('auto_rename: batch-accept failed fc_id=%s', fc_id)
+        if batch_accepted:
+            _log.info('auto_rename: batch-accepted %d pending face matches', batch_accepted)
+
         # Promote any file with proposed_filename + a performer that isn't yet
         # approved — covers pending files enriched before auto-approve was added
         # and reviewed files whose proposed_filename was rebuilt by accept_match.
