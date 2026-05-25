@@ -6,7 +6,11 @@ import logging
 import os
 import threading
 
+import warnings
+
 import numpy as np
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="insightface")
 
 # Set before any insightface import so its internal cache uses persistent volume.
 os.environ.setdefault("INSIGHTFACE_ROOT", "/data/.insightface")

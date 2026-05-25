@@ -605,7 +605,8 @@
   .face-status-body { padding: .5rem .8rem .7rem; border-top: 1px solid var(--border); }
   .face-status-row { display: flex; align-items: center; gap: .6rem; font-size: .78rem; margin-bottom: .3rem; }
   .face-status-meta { color: var(--text-muted); font-size: .73rem; }
-  .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: monospace; }
+  .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: monospace; min-width: 0; }
+  .face-status-file > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .face-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
   .face-status-dot.running { background: #22c55e; box-shadow: 0 0 0 2px #22c55e33; animation: pulse 1.5s infinite; }
   .face-status-error { font-size: .72rem; color: #ef4444; margin-top: .2rem; }
