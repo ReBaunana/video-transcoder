@@ -345,8 +345,10 @@ def enqueue_pending_rematch(conn: sqlite3.Connection) -> int:
 
 
 def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
-    """Enqueue seed_known jobs for single-performer files not yet seeded from video frames.
+    """Enqueue seed_known jobs for known-performer files not yet seeded from video frames.
 
+    Includes 'renamed' files — a renamed file is a confirmed performer match and
+    is a valid source of reference embeddings.
     Skips files that already have a completed or in-progress seed_known job.
     Priority 10 (runs before match_unknown at priority 100).
     """
@@ -357,7 +359,7 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
             SELECT fp.file_curation_id
               FROM file_performer fp
               JOIN file_curation fc ON fc.id = fp.file_curation_id
-             WHERE fc.status NOT IN ('skipped', 'renamed')
+             WHERE fc.status != 'skipped'
                AND fp.position = 0
                AND NOT EXISTS (
                    SELECT 1 FROM face_recognition_job j
