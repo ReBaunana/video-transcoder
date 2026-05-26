@@ -641,6 +641,13 @@
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // Expose to global scope for inline onclick handlers
+  window.accept    = accept;
+  window.rejectOne = rejectOne;
+  window.rejectAll = rejectAll;
+  window.skip      = skip;
+  window.navigate  = navigate;
+
   // ── init ───────────────────────────────────────────────────────────────
   loadItem(0);
 })();
