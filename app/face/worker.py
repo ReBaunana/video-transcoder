@@ -604,10 +604,10 @@ def _process_job(conn: sqlite3.Connection, job: dict) -> None:
     if not Path(path).exists():
         raise FileNotFoundError(f"video not found: {path}")
     if duration <= 0.0:
-        # Best-effort probe via ffprobe; the extractor still handles empty results.
         duration = _probe_duration(path) or 0.0
         if duration <= 0.0:
-            raise RuntimeError(f"unable to determine duration for {path}")
+            log.warning("face-worker: no duration for %s — skipping (corrupt/empty)", path)
+            return
 
     if job_type == "seed_known":
         # Pick the single performer attached to this file.
