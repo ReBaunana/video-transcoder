@@ -66,18 +66,21 @@ def ensure_thumb_dir() -> None:
 
 
 def _sample_window(duration_sec: float) -> tuple[float, float, int]:
-    """Return (start_t, end_t, n_frames) for the middle 87% sampling window.
+    """Return (start_t, end_t, n_frames) for the sampling window.
+
+    Uses a fixed 60-second window to keep NFS I/O bounded — decoding the full
+    87% window of a long file over NFS reliably times out. 30 frames across
+    60 seconds (one every 2s) is sufficient for face recognition.
 
     Returns (0.0, 0.0, 0) if the clip is too short to sample.
     """
-    if duration_sec <= 1.0:
+    if duration_sec <= 10.0:
         return (0.0, 0.0, 0)
-    start = duration_sec * 0.08
-    end = duration_sec * 0.95
+    start = min(duration_sec * 0.05, 30.0)   # skip intro, cap seek at 30s
+    end = min(start + 60.0, duration_sec * 0.95)
     if end <= start:
         return (0.0, 0.0, 0)
-    n = max(40, min(60, int(duration_sec / 30)))
-    return (start, end, n)
+    return (start, end, 30)
 
 
 def _sample_timestamps(duration_sec: float) -> list[float]:
