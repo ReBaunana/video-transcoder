@@ -33,6 +33,7 @@ class PerformerIndex:
         self._matrix: np.ndarray | None = None   # (N, 512) float32, L2-normalized
         self._ids: np.ndarray | None = None      # (N,) int64, row -> performer_id
         self._names: dict[int, str] = {}         # performer_id -> canonical_name
+        self._genders: dict[int, str] = {}       # performer_id -> 'female'|'male'|'unknown'
         self._loaded = False
 
     def load(self, conn: sqlite3.Connection) -> None:
@@ -40,7 +41,8 @@ class PerformerIndex:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT fe.performer_id, fe.embedding, p.canonical_name
+            SELECT fe.performer_id, fe.embedding, p.canonical_name,
+                   COALESCE(p.gender, 'unknown') AS gender
               FROM face_embedding fe
               JOIN performer p ON p.id = fe.performer_id
              WHERE fe.performer_id IS NOT NULL
@@ -54,6 +56,7 @@ class PerformerIndex:
                 self._matrix = np.zeros((0, 512), dtype=np.float32)
                 self._ids = np.zeros((0,), dtype=np.int64)
                 self._names = {}
+                self._genders = {}
                 self._loaded = True
             log.info("PerformerIndex.load: empty index")
             return
@@ -61,7 +64,8 @@ class PerformerIndex:
         vecs: list[np.ndarray] = []
         ids: list[int] = []
         names: dict[int, str] = {}
-        for performer_id, blob, name in rows:
+        genders: dict[int, str] = {}
+        for performer_id, blob, name, gender in rows:
             try:
                 v = blob_to_embed(blob)
                 if v.size != 512:
@@ -77,6 +81,7 @@ class PerformerIndex:
                 vecs.append(v.astype(np.float32, copy=False))
                 ids.append(int(performer_id))
                 names[int(performer_id)] = name
+                genders[int(performer_id)] = gender or "unknown"
             except Exception:
                 log.exception("PerformerIndex.load: bad row performer_id=%s", performer_id)
 
@@ -91,6 +96,7 @@ class PerformerIndex:
             self._matrix = matrix
             self._ids = id_arr
             self._names = names
+            self._genders = genders
             self._loaded = True
 
         log.info(
@@ -112,6 +118,11 @@ class PerformerIndex:
     def performer_count(self) -> int:
         with self._lock:
             return len(self._names)
+
+    def get_gender(self, performer_id: int) -> str:
+        """Return 'female', 'male', or 'unknown' for a performer."""
+        with self._lock:
+            return self._genders.get(int(performer_id), "unknown")
 
     def match(self, query: np.ndarray, top_k: int = 20) -> list[dict]:
         """Cosine similarity search; query must be L2-normalized.
@@ -317,17 +328,27 @@ def match_video(
         log.exception("match_video: DB error file_id=%s", file_curation_id)
         raise
 
-    # Auto-accept: primary performer = most frequent by frame count.
-    # Secondary performers (fewer frames) are passed to accept_match so they
-    # land in file_performer before TPDB runs and appear in the filename.
+    # Auto-accept: female performers take priority over male/unknown as primary,
+    # then sort by frame count within each gender tier.
+    # Gender priority: female=0, unknown=1, male=2
     if candidates:
-        by_frame = sorted(candidates, key=lambda c: c["match_count"], reverse=True)
+        def _gender_rank(pid: int) -> int:
+            g = idx.get_gender(pid)
+            return 0 if g == "female" else (2 if g == "male" else 1)
+
+        by_frame = sorted(
+            candidates,
+            key=lambda c: (_gender_rank(c["performer_id"]), -c["match_count"]),
+        )
         primary = by_frame[0]
         secondaries = by_frame[1:]
-        # Primary must appear in ≥ 30% more frames than the runner-up to auto-accept.
+        # Dominance check: only compare primary against competitors of equal or
+        # higher gender priority (e.g. female vs female, not female vs male).
+        primary_rank = _gender_rank(primary["performer_id"])
+        same_tier = [c for c in secondaries if _gender_rank(c["performer_id"]) <= primary_rank]
         top_is_dominant = (
-            not secondaries
-            or secondaries[0]["match_count"] < 0.7 * primary["match_count"]
+            not same_tier
+            or same_tier[0]["match_count"] < 0.7 * primary["match_count"]
         )
         if primary["similarity"] >= AUTO_ACCEPT_THRESHOLD and top_is_dominant:
             try:

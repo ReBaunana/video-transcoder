@@ -828,6 +828,30 @@ async def library_tpdb_batch(request: Request) -> JSONResponse:
     })
 
 
+@router.patch('/api/performers/{performer_id}/gender')
+async def set_performer_gender(performer_id: int, request: Request):
+    """Set the gender for a performer ('female', 'male', 'unknown')."""
+    body = await request.json()
+    gender = str(body.get('gender', '')).lower()
+    if gender not in ('female', 'male', 'unknown'):
+        return JSONResponse({'ok': False, 'error': 'gender must be female, male, or unknown'}, status_code=400)
+    conn = _db(request)
+    cur = conn.execute(
+        "UPDATE performer SET gender = ?, updated_at = datetime('now') WHERE id = ?",
+        (gender, performer_id),
+    )
+    if cur.rowcount == 0:
+        return JSONResponse({'ok': False, 'error': 'performer not found'}, status_code=404)
+    conn.commit()
+    # Reload the face index so the new gender is picked up immediately.
+    try:
+        from app.face.matcher import get_index
+        get_index().reload(conn)
+    except Exception:
+        log.exception('set_performer_gender: index reload failed')
+    return JSONResponse({'ok': True, 'performer_id': performer_id, 'gender': gender})
+
+
 @router.post('/library/face/enqueue-all')
 async def library_face_enqueue_all(request: Request):
     """Enqueue face-detection jobs for every file with unknown performers."""

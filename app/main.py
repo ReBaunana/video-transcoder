@@ -314,18 +314,29 @@ def _run_auto_rename(db_path: str) -> None:
         batch_accepted = 0
         for fc_id in pending_fc_ids:
             candidates = conn.execute(
-                """SELECT id, similarity, match_count FROM face_match_result
-                    WHERE file_curation_id = ? AND status = 'pending'
-                    ORDER BY match_count DESC, similarity DESC""",
+                """SELECT mr.id, mr.similarity, mr.match_count,
+                          COALESCE(p.gender, 'unknown') AS gender
+                     FROM face_match_result mr
+                     JOIN performer p ON p.id = mr.performer_id
+                    WHERE mr.file_curation_id = ? AND mr.status = 'pending'
+                    ORDER BY CASE COALESCE(p.gender,'unknown')
+                                 WHEN 'female'  THEN 0
+                                 WHEN 'unknown' THEN 1
+                                 ELSE 2
+                             END ASC,
+                             mr.match_count DESC, mr.similarity DESC""",
                 (fc_id,),
             ).fetchall()
             if not candidates:
                 continue
-            primary = candidates[0]
+            primary = candidates[0]    # (id, similarity, match_count, gender)
             secondaries = candidates[1:]
+            def _g_rank(g: str) -> int:
+                return 0 if g == "female" else (2 if g == "male" else 1)
+            same_tier = [s for s in secondaries if _g_rank(s[3]) <= _g_rank(primary[3])]
             top_is_dominant = (
-                not secondaries
-                or secondaries[0][2] < 0.7 * primary[2]
+                not same_tier
+                or same_tier[0][2] < 0.7 * primary[2]
             )
             if primary[1] >= _AAT and top_is_dominant:
                 try:

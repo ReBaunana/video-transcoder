@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS performer (
     embedding_count INTEGER NOT NULL DEFAULT 0,
     is_reference_ready INTEGER NOT NULL DEFAULT 0,
     profile_thumb TEXT,
+    gender TEXT NOT NULL DEFAULT 'unknown',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -151,6 +152,12 @@ def init_curation(conn: sqlite3.Connection) -> None:
     """Apply curation schema. Idempotent."""
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_CURATION_SCHEMA)
+    # Migrations for existing DBs.
+    try:
+        conn.execute("ALTER TABLE performer ADD COLUMN gender TEXT NOT NULL DEFAULT 'unknown'")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.commit()
 
 
