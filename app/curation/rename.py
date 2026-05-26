@@ -104,14 +104,32 @@ def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
                 "error": "source_missing",
             }
 
-        if os.path.lexists(to_path):
-            conn.rollback()
-            return {
-                "ok": False,
-                "from": from_path,
-                "to": to_path,
-                "error": "target_exists",
-            }
+        if os.path.lexists(to_path) and from_path != to_path:
+            # Target taken — try _2, _3, ... _99 suffix before giving up.
+            stem = Path(to_path).stem
+            suffix = Path(to_path).suffix
+            parent_dir = os.path.dirname(to_path)
+            resolved = None
+            for n in range(2, 100):
+                candidate = os.path.join(parent_dir, f"{stem}_{n}{suffix}")
+                if not os.path.lexists(candidate):
+                    resolved = candidate
+                    break
+            if resolved is None:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "from": from_path,
+                    "to": to_path,
+                    "error": "target_exists",
+                }
+            # Update proposed_filename in DB so it reflects what we'll actually use.
+            new_basename = os.path.basename(resolved)
+            conn.execute(
+                "UPDATE file_curation SET proposed_filename = ? WHERE id = ?",
+                (new_basename, int(file_curation_id)),
+            )
+            to_path = resolved
 
         # --- Filesystem move ---
         try:
