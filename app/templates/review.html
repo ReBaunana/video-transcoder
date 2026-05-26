@@ -74,6 +74,16 @@
     cursor: pointer;
   }
   .btn-bulk-reject-males:hover { background: rgba(248,113,113,.18); }
+  .btn-bulk-rescan {
+    padding: .35rem .9rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(148,163,184,.35);
+    background: rgba(148,163,184,.08);
+    color: var(--text-muted);
+    font-size: .78rem;
+    cursor: pointer;
+  }
+  .btn-bulk-rescan:hover { background: rgba(148,163,184,.18); color: var(--text); }
 
   .rq-kbd-hint {
     display: flex;
@@ -393,6 +403,7 @@
   <div class="rq-bulk-actions">
     <button class="btn-bulk-accept" onclick="acceptAllClear()">Accept All Clear</button>
     <button class="btn-bulk-reject-males" onclick="bulkRejectMales()">Reject All Males</button>
+    <button class="btn-bulk-rescan" onclick="rescanPending()">Re-scan (20 samples)</button>
   </div>
 
   <div class="rq-kbd-hint">
@@ -641,6 +652,13 @@
     loadItem(0);
   }
 
+  async function rescanPending() {
+    if (!confirm(`${_total} Files nochmals mit 20 Samples scannen?\nDauert einige Stunden — Workers laufen im Hintergrund.`)) return;
+    const r = await fetch('/api/face/rematch-pending', {method:'POST'}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (!r.ok) { toast('Error: ' + r.error, 'err'); return; }
+    toast(`${r.requeued} files re-queued for deeper scan`, 'ok');
+  }
+
   function skip() {
     navigate(1);
   }
@@ -698,6 +716,7 @@
   window.navigate         = navigate;
   window.bulkRejectMales  = bulkRejectMales;
   window.acceptAllClear   = acceptAllClear;
+  window.rescanPending    = rescanPending;
 
   // ── init ───────────────────────────────────────────────────────────────
   loadItem(0);

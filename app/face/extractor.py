@@ -65,17 +65,19 @@ def ensure_thumb_dir() -> None:
         log.debug("ensure_thumb_dir: chmod skipped (not owner)")
 
 
-_WINDOW_POSITIONS = (0.05, 0.17, 0.30, 0.42, 0.55, 0.67, 0.80, 0.92)  # 8 windows across full video
+_WINDOW_POSITIONS = (  # 20 windows, evenly spaced 3%–97%
+    0.03, 0.08, 0.13, 0.18, 0.23, 0.28, 0.33, 0.38, 0.43, 0.47,
+    0.52, 0.57, 0.62, 0.67, 0.72, 0.77, 0.82, 0.87, 0.92, 0.97,
+)
 _WINDOW_SEC = 30.0        # length of each window — keeps NFS I/O bounded
 _FRAMES_PER_WINDOW = 10   # frames per window (one every 3s)
 
 
 def _sample_windows(duration_sec: float) -> list[tuple[float, float]]:
-    """Return (start_t, end_t) for up to 8 windows spread across the video.
+    """Return (start_t, end_t) for up to 20 windows spread across the video.
 
-    Each window is 30 seconds long.  Eight windows at evenly spaced positions
-    (5%–92%) give dense temporal coverage: 80 frames total, ~54s over NFS
-    for a 2 GB 1080p HEVC file.
+    Each window is 30 seconds long.  20 windows at evenly spaced positions
+    (3%–97%) give dense temporal coverage: 200 frames total.
     """
     if duration_sec <= 10.0:
         return []
