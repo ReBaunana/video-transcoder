@@ -47,6 +47,7 @@ class PerformerIndex:
               JOIN performer p ON p.id = fe.performer_id
              WHERE fe.performer_id IS NOT NULL
                AND fe.embedding IS NOT NULL
+               AND COALESCE(p.gender, 'unknown') != 'male'
             """
         )
         rows = cur.fetchall()

@@ -726,6 +726,75 @@ async def face_reject(match_id: int, request: Request):
     return JSONResponse({'ok': True, 'remaining': remaining})
 
 
+@router.post('/api/face/bulk-reject-males')
+async def face_bulk_reject_males(request: Request):
+    conn = _db(request)
+    cur = conn.execute(
+        """
+        UPDATE face_match_result SET status='rejected', resolved_at=datetime('now')
+        WHERE status='pending'
+          AND performer_id IN (SELECT id FROM performer WHERE gender='male')
+        """
+    )
+    count = cur.rowcount
+    conn.commit()
+    remaining = conn.execute(
+        "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+    ).fetchone()[0]
+    return JSONResponse({'ok': True, 'rejected': count, 'remaining': remaining})
+
+
+@router.post('/api/face/accept-all-clear')
+async def face_accept_all_clear(request: Request):
+    from app.face.matcher import accept_match, AUTO_ACCEPT_THRESHOLD
+
+    conn = _db(request)
+
+    def _g_rank(g: str) -> int:
+        return 0 if g == 'female' else (2 if g == 'male' else 1)
+
+    pending_fc_ids = [
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT file_curation_id FROM face_match_result WHERE status='pending'"
+        ).fetchall()
+    ]
+
+    accepted = 0
+    for fc_id in pending_fc_ids:
+        candidates = conn.execute(
+            """
+            SELECT mr.id, mr.similarity, mr.match_count, COALESCE(p.gender,'unknown')
+              FROM face_match_result mr
+              JOIN performer p ON p.id = mr.performer_id
+             WHERE mr.file_curation_id = ? AND mr.status = 'pending'
+             ORDER BY CASE COALESCE(p.gender,'unknown')
+                          WHEN 'female' THEN 0 WHEN 'unknown' THEN 1 ELSE 2
+                      END,
+                      mr.match_count DESC, mr.similarity DESC
+            """,
+            (fc_id,),
+        ).fetchall()
+        if not candidates:
+            continue
+        primary = candidates[0]
+        secondaries = candidates[1:]
+        same_tier = [s for s in secondaries if _g_rank(s[3]) <= _g_rank(primary[3])]
+        dominant = not same_tier or same_tier[0][2] < 0.7 * primary[2]
+        if primary[1] < AUTO_ACCEPT_THRESHOLD or not dominant:
+            continue
+        secondary_ids = [int(s[0]) for s in secondaries]
+        try:
+            accept_match(conn, primary[0], secondary_match_ids=secondary_ids or None)
+            accepted += 1
+        except Exception:
+            log.exception('accept_all_clear failed fc_id=%s', fc_id)
+
+    remaining = conn.execute(
+        "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+    ).fetchone()[0]
+    return JSONResponse({'ok': True, 'accepted': accepted, 'remaining': remaining})
+
+
 @router.get('/api/face-status')
 async def api_face_status(request: Request) -> JSONResponse:
     """Live face-recognition queue snapshot — running jobs, throughput, ETA."""

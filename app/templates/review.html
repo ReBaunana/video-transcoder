@@ -49,6 +49,32 @@
   .rq-nav button:disabled { opacity: .35; cursor: not-allowed; }
 
   /* ── Keyboard hint ────────────────────────────── */
+  .rq-bulk-actions {
+    display: flex;
+    gap: .6rem;
+    margin-bottom: .8rem;
+  }
+  .btn-bulk-accept {
+    padding: .35rem .9rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(74,222,128,.35);
+    background: rgba(74,222,128,.08);
+    color: var(--green);
+    font-size: .78rem;
+    cursor: pointer;
+  }
+  .btn-bulk-accept:hover { background: rgba(74,222,128,.18); }
+  .btn-bulk-reject-males {
+    padding: .35rem .9rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(248,113,113,.35);
+    background: rgba(248,113,113,.08);
+    color: var(--red);
+    font-size: .78rem;
+    cursor: pointer;
+  }
+  .btn-bulk-reject-males:hover { background: rgba(248,113,113,.18); }
+
   .rq-kbd-hint {
     display: flex;
     gap: .6rem;
@@ -364,6 +390,11 @@
     </div>
   </div>
 
+  <div class="rq-bulk-actions">
+    <button class="btn-bulk-accept" onclick="acceptAllClear()">Accept All Clear</button>
+    <button class="btn-bulk-reject-males" onclick="bulkRejectMales()">Reject All Males</button>
+  </div>
+
   <div class="rq-kbd-hint">
     <span><kbd>1</kbd>–<kbd>9</kbd> accept candidate</span>
     <span><kbd>R</kbd> reject all</span>
@@ -592,6 +623,24 @@
     setTimeout(() => advance(), 500);
   }
 
+  async function bulkRejectMales() {
+    if (!confirm('Alle pending Matches mit männlichen Performern verwerfen?')) return;
+    const r = await fetch('/api/face/bulk-reject-males', {method:'POST'}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (!r.ok) { toast('Error: ' + r.error, 'err'); return; }
+    _total = r.remaining;
+    toast(`${r.rejected} male matches rejected`, 'ok');
+    loadItem(0);
+  }
+
+  async function acceptAllClear() {
+    if (!confirm('Alle eindeutigen Matches automatisch akzeptieren?')) return;
+    const r = await fetch('/api/face/accept-all-clear', {method:'POST'}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (!r.ok) { toast('Error: ' + r.error, 'err'); return; }
+    _total = r.remaining;
+    toast(`${r.accepted} matches accepted`, 'ok');
+    loadItem(0);
+  }
+
   function skip() {
     navigate(1);
   }
@@ -642,11 +691,13 @@
   }
 
   // Expose to global scope for inline onclick handlers
-  window.accept    = accept;
-  window.rejectOne = rejectOne;
-  window.rejectAll = rejectAll;
-  window.skip      = skip;
-  window.navigate  = navigate;
+  window.accept           = accept;
+  window.rejectOne        = rejectOne;
+  window.rejectAll        = rejectAll;
+  window.skip             = skip;
+  window.navigate         = navigate;
+  window.bulkRejectMales  = bulkRejectMales;
+  window.acceptAllClear   = acceptAllClear;
 
   // ── init ───────────────────────────────────────────────────────────────
   loadItem(0);
