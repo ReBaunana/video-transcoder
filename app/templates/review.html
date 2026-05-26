@@ -84,6 +84,18 @@
     cursor: pointer;
   }
   .btn-bulk-rescan:hover { background: rgba(148,163,184,.18); color: var(--text); }
+  .btn-delete-all {
+    margin-left: auto;
+    padding: .4rem 1.1rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(248,113,113,.6);
+    background: rgba(248,113,113,.12);
+    color: var(--red);
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-delete-all:hover { background: rgba(248,113,113,.28); }
 
   .rq-kbd-hint {
     display: flex;
@@ -423,6 +435,7 @@
   <div class="review-footer" id="rqFooter" style="display:none">
     <button class="btn-skip" onclick="skip()">Skip (S)</button>
     <button class="btn-reject-all" onclick="rejectAll()">Reject All (R)</button>
+    <button class="btn-delete-all" onclick="deleteAll()">Delete All Files</button>
   </div>
 
 </div>
@@ -652,6 +665,16 @@
     loadItem(0);
   }
 
+  async function deleteAll() {
+    if (!confirm(`ACHTUNG: Alle ${_total} Files im Review dauerhaft vom Filesystem löschen?\n\nDas kann nicht rückgängig gemacht werden.`)) return;
+    if (!confirm('Wirklich alle löschen? Zweite Bestätigung erforderlich.')) return;
+    const r = await fetch('/api/review/delete-all', {method:'POST'}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if (!r.ok) { toast('Error: ' + (r.error || 'failed'), 'err'); return; }
+    _total = 0;
+    toast(`${r.deleted_files} Files gelöscht, ${r.deleted_db} DB-Einträge entfernt`, 'ok');
+    setTimeout(() => { _offset = 0; loadItem(0); }, 800);
+  }
+
   async function rescanPending() {
     if (!confirm(`${_total} Files nochmals mit 20 Samples scannen?\nDauert einige Stunden — Workers laufen im Hintergrund.`)) return;
     const r = await fetch('/api/face/rematch-pending', {method:'POST'}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
@@ -717,6 +740,7 @@
   window.bulkRejectMales  = bulkRejectMales;
   window.acceptAllClear   = acceptAllClear;
   window.rescanPending    = rescanPending;
+  window.deleteAll        = deleteAll;
 
   // ── init ───────────────────────────────────────────────────────────────
   loadItem(0);

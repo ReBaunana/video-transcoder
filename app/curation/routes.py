@@ -726,6 +726,51 @@ async def face_reject(match_id: int, request: Request):
     return JSONResponse({'ok': True, 'remaining': remaining})
 
 
+@router.post('/api/review/delete-all')
+async def review_delete_all(request: Request):
+    """Delete all files currently in the review queue from filesystem and DB."""
+    conn = _db(request)
+    rows = conn.execute(
+        """
+        SELECT fc.id, fc.path
+          FROM file_curation fc
+         WHERE fc.id IN (
+             SELECT DISTINCT file_curation_id FROM face_match_result WHERE status='pending'
+         )
+        """
+    ).fetchall()
+
+    deleted_files = 0
+    deleted_db = 0
+    errors: list[str] = []
+
+    for fc_id, path in rows:
+        if path:
+            try:
+                if os.path.lexists(path):
+                    os.unlink(path)
+                    deleted_files += 1
+            except OSError as exc:
+                errors.append(f"{path}: {exc}")
+        try:
+            conn.execute("DELETE FROM face_match_result  WHERE file_curation_id=?", (fc_id,))
+            conn.execute("DELETE FROM face_recognition_job WHERE file_curation_id=?", (fc_id,))
+            conn.execute("DELETE FROM face_embedding      WHERE file_curation_id=?", (fc_id,))
+            conn.execute("DELETE FROM file_performer      WHERE file_curation_id=?", (fc_id,))
+            conn.execute("DELETE FROM file_curation       WHERE id=?", (fc_id,))
+            deleted_db += 1
+        except Exception as exc:
+            errors.append(f"db id={fc_id}: {exc}")
+
+    conn.commit()
+    return JSONResponse({
+        'ok': True,
+        'deleted_files': deleted_files,
+        'deleted_db': deleted_db,
+        'errors': errors[:10],
+    })
+
+
 @router.post('/api/face/bulk-reject-males')
 async def face_bulk_reject_males(request: Request):
     conn = _db(request)

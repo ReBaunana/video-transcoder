@@ -408,6 +408,18 @@ def _run_auto_rename(db_path: str) -> None:
         for e in errors[:5]:
             _log.warning('auto_rename error: %s', e)
 
+        # Re-queue files that are still uncertain after their first scan
+        # (priority=100 done jobs with pending results → re-scan at priority=50).
+        # Files still uncertain after the deep scan (priority=50 done) are left
+        # for manual review — they will not be re-queued automatically again.
+        try:
+            from app.face.worker import enqueue_pending_rematch as _rematch
+            n_requeued = _rematch(conn)
+            if n_requeued:
+                _log.info('auto_rename: re-queued %d files for deep rescan', n_requeued)
+        except Exception:
+            _log.exception('auto_rename: enqueue_pending_rematch failed')
+
     except Exception:
         _log.exception('_run_auto_rename crashed')
     finally:

@@ -319,10 +319,11 @@ def enqueue_pending_rematch(conn: sqlite3.Connection) -> int:
         cur.execute(
             """
             UPDATE face_recognition_job
-               SET status = 'pending', priority = 100, attempts = 0,
+               SET status = 'pending', priority = 50, attempts = 0,
                    last_error = NULL, started_at = NULL, finished_at = NULL,
                    enqueued_at = ?
              WHERE status = 'done'
+               AND priority = 100
                AND file_curation_id IN (
                    SELECT DISTINCT file_curation_id
                      FROM face_match_result
