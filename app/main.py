@@ -386,6 +386,7 @@ def _run_auto_rename(db_path: str) -> None:
             conn.commit()
             _log.info('auto_rename: rebuilt proposed_filename for %d reviewed files', len(stale))
 
+        conn.commit()  # close any implicit transaction before execute_rename opens BEGIN IMMEDIATE
         from app.curation.rename import execute_batch_rename
         result = execute_batch_rename(conn, mount=None, limit=200)
         renamed = result.get('ok', 0)
