@@ -1,0 +1,648 @@
+{% extends "base.html" %}
+{% block title %}Review — Video Transcoder{% endblock %}
+
+{% block head_extra %}
+<style>
+  .review-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1.75rem;
+  }
+
+  /* ── Progress bar ─────────────────────────────── */
+  .rq-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.4rem;
+    flex-wrap: wrap;
+  }
+  .rq-title { font-size: .8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .07em; }
+  .rq-counter { font-size: .82rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .rq-progress-track {
+    flex: 1;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 99px;
+    overflow: hidden;
+    min-width: 80px;
+  }
+  .rq-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width .4s ease;
+  }
+  .rq-nav { display: flex; gap: .4rem; }
+  .rq-nav button {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: .8rem;
+    padding: .32rem .65rem;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .rq-nav button:hover { border-color: var(--border-hover); background: var(--surface-3); }
+  .rq-nav button:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── Keyboard hint ────────────────────────────── */
+  .rq-kbd-hint {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.2rem;
+    font-size: .68rem;
+    color: var(--text-muted);
+  }
+  .rq-kbd-hint kbd {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: .25rem;
+    padding: .1rem .35rem;
+    font-size: .66rem;
+    font-family: inherit;
+    color: var(--text);
+  }
+
+  /* ── Main card ────────────────────────────────── */
+  .review-card {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.2rem;
+    align-items: start;
+  }
+  @media (max-width: 720px) { .review-card { grid-template-columns: 1fr; } }
+
+  /* ── Left: file info ──────────────────────────── */
+  .file-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: sticky;
+    top: calc(var(--topbar-h, 88px) + 1rem);
+  }
+  .file-panel-header {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .file-panel-header .panel-title { font-size: .63rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .07em; }
+  .file-name {
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-all;
+    margin-top: .2rem;
+    line-height: 1.4;
+  }
+  .file-meta {
+    padding: .7rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .file-meta-row {
+    display: flex;
+    gap: .5rem;
+    font-size: .72rem;
+    align-items: baseline;
+  }
+  .file-meta-label { color: var(--text-muted); min-width: 56px; flex-shrink: 0; }
+  .file-meta-value { color: var(--text); }
+  .ambiguous-badge {
+    margin: .4rem 1rem .7rem;
+    padding: .35rem .7rem;
+    background: rgba(251,191,36,.08);
+    border: 1px solid rgba(251,191,36,.25);
+    border-radius: var(--radius-sm);
+    font-size: .7rem;
+    color: var(--yellow);
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+
+  /* ── Right: candidates ───────────────────────── */
+  .candidates-panel { display: flex; flex-direction: column; gap: .85rem; }
+
+  .candidate-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color .15s;
+  }
+  .candidate-card:hover { border-color: var(--border-hover); }
+  .candidate-card.accepted { border-color: rgba(52,211,153,.35); background: var(--green-bg); }
+  .candidate-card.rejected { border-color: var(--border); opacity: .45; }
+
+  .candidate-header {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .candidate-rank {
+    width: 22px;
+    height: 22px;
+    background: var(--surface-3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .candidate-name { font-weight: 600; font-size: .85rem; flex: 1; }
+  .gender-badge {
+    font-size: .6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .15rem .45rem;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .gender-badge.female { color: #f472b6; border-color: rgba(244,114,182,.3); background: rgba(244,114,182,.06); }
+
+  /* similarity + match_count stats */
+  .candidate-stats {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: .5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: .72rem;
+  }
+  .sim-label { color: var(--text-muted); width: 28px; flex-shrink: 0; }
+  .sim-track {
+    flex: 1;
+    height: 6px;
+    background: var(--surface-3);
+    border-radius: 99px;
+    overflow: hidden;
+    max-width: 200px;
+  }
+  .sim-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--accent);
+    transition: width .3s;
+  }
+  .sim-val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); min-width: 36px; }
+  .mc-sep { width: 1px; height: 12px; background: var(--border); }
+  .mc-label { color: var(--text-muted); }
+  .mc-val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+
+  /* ── Thumbnails ──────────────────────────────── */
+  .candidate-thumbs {
+    display: flex;
+    gap: .4rem;
+    padding: .65rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .thumb-group { display: flex; flex-direction: column; gap: .2rem; align-items: center; }
+  .thumb-label { font-size: .58rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .thumb-img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: .4rem;
+    border: 1px solid var(--border);
+    background: var(--surface-3);
+    flex-shrink: 0;
+  }
+  .thumb-img.profile { border-color: rgba(108,142,245,.3); }
+  .thumb-placeholder {
+    width: 72px;
+    height: 72px;
+    border-radius: .4rem;
+    border: 1px dashed var(--border);
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: .6rem;
+  }
+  .thumb-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+  /* ── Actions ─────────────────────────────────── */
+  .candidate-actions {
+    display: flex;
+    gap: .5rem;
+    padding: .65rem 1rem;
+    align-items: center;
+  }
+  .btn-accept {
+    background: var(--green-bg);
+    border: 1px solid rgba(52,211,153,.3);
+    color: var(--green);
+    padding: .4rem .9rem;
+    border-radius: var(--radius-sm);
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    transition: all .15s;
+  }
+  .btn-accept:hover { background: rgba(52,211,153,.15); border-color: rgba(52,211,153,.5); }
+  .btn-accept:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-reject-single {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: .4rem .7rem;
+    border-radius: var(--radius-sm);
+    font-size: .72rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .btn-reject-single:hover { border-color: rgba(248,113,113,.3); color: var(--red); }
+  .btn-reject-single:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* ── Footer actions ─────────────────────────── */
+  .review-footer {
+    margin-top: 1rem;
+    display: flex;
+    gap: .5rem;
+    justify-content: flex-end;
+  }
+  .btn-reject-all {
+    background: var(--red-bg);
+    border: 1px solid rgba(248,113,113,.25);
+    color: var(--red);
+    padding: .42rem .9rem;
+    border-radius: var(--radius-sm);
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .btn-reject-all:hover { background: rgba(248,113,113,.15); border-color: rgba(248,113,113,.45); }
+  .btn-skip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: .42rem .9rem;
+    border-radius: var(--radius-sm);
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .btn-skip:hover { border-color: var(--border-hover); color: var(--text); }
+
+  /* ── Empty state ─────────────────────────────── */
+  .rq-empty {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: var(--text-muted);
+  }
+  .rq-empty-icon { font-size: 2.5rem; margin-bottom: .7rem; opacity: .4; }
+  .rq-empty-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: .4rem; }
+  .rq-empty-sub { font-size: .78rem; }
+
+  /* ── Loading skeleton ──────────────────────────── */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: .4rem;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* ── Toast ────────────────────────────────────── */
+  .toast {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: .55rem 1rem;
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--text);
+    pointer-events: auto;
+    animation: fade-up .2s ease;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .toast.ok { border-color: rgba(52,211,153,.3); color: var(--green); }
+  .toast.err { border-color: rgba(248,113,113,.3); color: var(--red); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="review-wrap">
+
+  <div class="rq-header">
+    <span class="rq-title">Review Queue</span>
+    <span class="rq-counter" id="rqCounter">— pending</span>
+    <div class="rq-progress-track">
+      <div class="rq-progress-fill" id="rqProgressFill" style="width:0%"></div>
+    </div>
+    <div class="rq-nav">
+      <button id="btnPrev" onclick="navigate(-1)" disabled>&#8592; Prev</button>
+      <button id="btnNext" onclick="navigate(1)">Next &#8594;</button>
+    </div>
+  </div>
+
+  <div class="rq-kbd-hint">
+    <span><kbd>1</kbd>–<kbd>9</kbd> accept candidate</span>
+    <span><kbd>R</kbd> reject all</span>
+    <span><kbd>S</kbd> skip</span>
+    <span><kbd>&#8592;</kbd><kbd>&#8594;</kbd> navigate</span>
+  </div>
+
+  <div id="rqContent">
+    <div class="rq-empty">
+      <div class="rq-empty-icon">⏳</div>
+      <div class="rq-empty-title">Loading…</div>
+    </div>
+  </div>
+
+  <div class="review-footer" id="rqFooter" style="display:none">
+    <button class="btn-skip" onclick="skip()">Skip (S)</button>
+    <button class="btn-reject-all" onclick="rejectAll()">Reject All (R)</button>
+  </div>
+
+</div>
+<div id="toastContainer"></div>
+{% endblock %}
+
+{% block body_end %}
+<script>
+(function () {
+  const TOTAL_START = {{ queue_total }};
+  let _offset   = 0;
+  let _total    = TOTAL_START;
+  let _current  = null;   // current item
+  let _busy     = false;
+  let _accepted = 0;      // actions taken this session (for progress)
+
+  // ── fetch + render ──────────────────────────────────────────────────────
+  async function loadItem(offset) {
+    if (_busy) return;
+    _busy = true;
+    document.getElementById('rqContent').innerHTML = '<div class="rq-empty"><div class="skeleton" style="height:320px;border-radius:.8rem"></div></div>';
+    document.getElementById('rqFooter').style.display = 'none';
+    try {
+      const d = await fetch(`/api/review/queue?offset=${offset}&limit=1`).then(r => r.json());
+      _total  = d.total;
+      _offset = offset;
+      updateCounter();
+      if (!d.items || d.items.length === 0) {
+        showEmpty();
+      } else {
+        _current = d.items[0];
+        renderItem(_current);
+        document.getElementById('rqFooter').style.display = 'flex';
+      }
+    } catch(e) {
+      document.getElementById('rqContent').innerHTML = `<div class="rq-empty"><div class="rq-empty-title">Error loading queue</div><div class="rq-empty-sub">${e}</div></div>`;
+    }
+    _busy = false;
+  }
+
+  function updateCounter() {
+    const el = document.getElementById('rqCounter');
+    if (_total === 0) {
+      el.textContent = 'All done ✓';
+    } else {
+      el.textContent = `${_offset + 1} / ${_total}`;
+    }
+    const done = TOTAL_START - _total;
+    const pct  = TOTAL_START > 0 ? Math.round(done / TOTAL_START * 100) : 100;
+    document.getElementById('rqProgressFill').style.width = pct + '%';
+    document.getElementById('btnPrev').disabled = _offset <= 0;
+    document.getElementById('btnNext').disabled = _offset >= _total - 1;
+    // Update nav tab badge
+    const tab = document.getElementById('reviewTab');
+    if (tab) {
+      tab.textContent = _total > 0 ? `Review (${_total})` : 'Review';
+      tab.style.color = _total > 0 ? 'var(--yellow)' : '';
+    }
+  }
+
+  function renderItem(item) {
+    const wrap = document.getElementById('rqContent');
+    wrap.innerHTML = `
+      <div class="review-card">
+        ${renderFilePanel(item)}
+        <div class="candidates-panel" id="candidatesPanel">
+          ${item.candidates.map((c, i) => renderCandidate(c, i, item)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFilePanel(item) {
+    const rows = [
+      item.mount       && `<div class="file-meta-row"><span class="file-meta-label">Mount</span><span class="file-meta-value">${esc(item.mount)}</span></div>`,
+      item.studio      && `<div class="file-meta-row"><span class="file-meta-label">Studio</span><span class="file-meta-value">${esc(item.studio)}</span></div>`,
+      item.title       && `<div class="file-meta-row"><span class="file-meta-label">Title</span><span class="file-meta-value">${esc(item.title)}</span></div>`,
+      item.release_date&& `<div class="file-meta-row"><span class="file-meta-label">Date</span><span class="file-meta-value">${esc(item.release_date)}</span></div>`,
+      item.resolution  && `<div class="file-meta-row"><span class="file-meta-label">Res</span><span class="file-meta-value">${esc(item.resolution)}</span></div>`,
+    ].filter(Boolean).join('');
+
+    const ambiguousBadge = item.is_ambiguous
+      ? `<div class="ambiguous-badge">⚠ Ambiguous — top candidates are too close to auto-accept</div>`
+      : '';
+
+    return `
+      <div class="file-panel">
+        <div class="file-panel-header">
+          <div class="panel-title">Video File</div>
+          <div class="file-name">${esc(item.filename)}</div>
+        </div>
+        <div class="file-meta">${rows}</div>
+        ${ambiguousBadge}
+      </div>
+    `;
+  }
+
+  function renderCandidate(c, idx, item) {
+    const simPct = Math.round(c.similarity * 100);
+    const simColor = c.similarity >= 0.65 ? 'var(--green)' : c.similarity >= 0.55 ? 'var(--accent)' : 'var(--yellow)';
+    const genderBadge = c.gender === 'female'
+      ? `<span class="gender-badge female">♀ female</span>`
+      : c.gender === 'male'
+        ? `<span class="gender-badge">♂ male</span>`
+        : '';
+    const keyHint = `<kbd style="background:var(--surface-2);border:1px solid var(--border);border-radius:.25rem;padding:.1rem .3rem;font-size:.65rem;font-family:inherit">${idx+1}</kbd>`;
+
+    // Thumbnails: profile first, then reference face crops
+    let thumbsHtml = '';
+    if (c.profile_thumb) {
+      thumbsHtml += `<div class="thumb-group"><span class="thumb-label">Profile</span><img class="thumb-img profile" src="${c.profile_thumb}" alt="" onerror="this.style.display='none'"></div>`;
+    }
+    if (c.ref_thumbs && c.ref_thumbs.length > 0) {
+      const refImgs = c.ref_thumbs.slice(0, 4).map(t =>
+        `<img class="thumb-img" src="${t}" alt="" onerror="this.style.display='none'">`
+      ).join('');
+      thumbsHtml += `<div class="thumb-group"><span class="thumb-label">Reference faces</span><div class="thumb-row">${refImgs}</div></div>`;
+    }
+    if (!thumbsHtml) {
+      thumbsHtml = `<div class="thumb-placeholder">No image</div>`;
+    }
+
+    return `
+      <div class="candidate-card" id="cand-${c.match_id}">
+        <div class="candidate-header">
+          <div class="candidate-rank">${idx+1}</div>
+          <div class="candidate-name">${esc(c.name)}</div>
+          ${genderBadge}
+        </div>
+        <div class="candidate-stats">
+          <span class="sim-label">Sim</span>
+          <div class="sim-track"><div class="sim-fill" style="width:${simPct}%;background:${simColor}"></div></div>
+          <span class="sim-val" style="color:${simColor}">${c.similarity.toFixed(3)}</span>
+          <div class="mc-sep"></div>
+          <span class="mc-label">Frames</span>
+          <span class="mc-val">${c.match_count}</span>
+        </div>
+        <div class="candidate-thumbs">${thumbsHtml}</div>
+        <div class="candidate-actions">
+          <button class="btn-accept" onclick="accept(${c.match_id})" id="acc-${c.match_id}">
+            ${keyHint} Accept ${esc(c.name)}
+          </button>
+          <button class="btn-reject-single" onclick="rejectOne(${c.match_id})" id="rej-${c.match_id}">
+            Reject
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function showEmpty() {
+    document.getElementById('rqContent').innerHTML = `
+      <div class="rq-empty">
+        <div class="rq-empty-icon">✓</div>
+        <div class="rq-empty-title">Queue empty — all caught up</div>
+        <div class="rq-empty-sub">New matches will appear here as face recognition continues.</div>
+      </div>
+    `;
+    document.getElementById('rqFooter').style.display = 'none';
+  }
+
+  // ── actions ────────────────────────────────────────────────────────────
+  async function accept(matchId) {
+    setAllBtns(true);
+    try {
+      const r = await fetch(`/api/face/accept/${matchId}`, {method:'POST'}).then(r=>r.json());
+      if (!r.ok) throw new Error(r.error || 'failed');
+      document.getElementById('cand-' + matchId)?.classList.add('accepted');
+      _total = r.remaining;
+      toast('Accepted ✓', 'ok');
+      setTimeout(() => advance(), 600);
+    } catch(e) {
+      toast('Error: ' + e.message, 'err');
+      setAllBtns(false);
+    }
+  }
+
+  async function rejectOne(matchId) {
+    const btn = document.getElementById('rej-' + matchId);
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(`/api/face/reject/${matchId}`, {method:'POST'}).then(r=>r.json());
+      if (!r.ok) throw new Error(r.error || 'failed');
+      document.getElementById('cand-' + matchId)?.classList.add('rejected');
+      _total = r.remaining;
+      // If all candidates rejected, advance
+      const cards = document.querySelectorAll('.candidate-card');
+      const allRejected = Array.from(cards).every(c => c.classList.contains('rejected'));
+      if (allRejected) { toast('All rejected', 'ok'); setTimeout(() => advance(), 500); }
+    } catch(e) {
+      toast('Error: ' + e.message, 'err');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function rejectAll() {
+    if (!_current) return;
+    setAllBtns(true);
+    let lastRemaining = _total;
+    for (const c of _current.candidates) {
+      try {
+        const r = await fetch(`/api/face/reject/${c.match_id}`, {method:'POST'}).then(r=>r.json());
+        if (r.ok) lastRemaining = r.remaining;
+        document.getElementById('cand-' + c.match_id)?.classList.add('rejected');
+      } catch(e) {}
+    }
+    _total = lastRemaining;
+    toast('All candidates rejected', 'ok');
+    setTimeout(() => advance(), 500);
+  }
+
+  function skip() {
+    navigate(1);
+  }
+
+  function advance() {
+    // After an action, reload current offset (the next file now occupies this slot)
+    loadItem(_offset);
+  }
+
+  function navigate(dir) {
+    const next = _offset + dir;
+    if (next < 0 || next >= _total) return;
+    loadItem(next);
+  }
+
+  function setAllBtns(disabled) {
+    document.querySelectorAll('.btn-accept, .btn-reject-single, .btn-reject-all, .btn-skip')
+      .forEach(b => b.disabled = disabled);
+  }
+
+  // ── keyboard ───────────────────────────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (!_current) return;
+    const key = e.key.toUpperCase();
+    if (key === 'ARROWLEFT')  { navigate(-1); return; }
+    if (key === 'ARROWRIGHT') { navigate(1);  return; }
+    if (key === 'R') { rejectAll(); return; }
+    if (key === 'S') { skip(); return; }
+    const idx = parseInt(e.key, 10);
+    if (idx >= 1 && idx <= _current.candidates.length) {
+      accept(_current.candidates[idx - 1].match_id);
+    }
+  });
+
+  // ── toast ──────────────────────────────────────────────────────────────
+  function toast(msg, type) {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type || '');
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 2800);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── init ───────────────────────────────────────────────────────────────
+  loadItem(0);
+})();
+</script>
+{% endblock %}

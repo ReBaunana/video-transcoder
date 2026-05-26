@@ -563,6 +563,169 @@ async def api_library_stats(request: Request) -> JSONResponse:
     ])
 
 
+def _thumb_url(path: str | None) -> str | None:
+    """Convert /data/face_thumbs/123.jpg → /static/faces/123.jpg."""
+    if not path:
+        return None
+    return '/static/faces/' + Path(path).name
+
+
+@router.get('/review')
+async def review_page(request: Request):
+    conn = _db(request)
+    total = conn.execute(
+        "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+    ).fetchone()[0]
+    return templates.TemplateResponse('review.html', {
+        'request': request,
+        'page_id': 'review',
+        'queue_total': total,
+    })
+
+
+@router.get('/api/review/queue')
+async def review_queue(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(1, ge=1, le=20),
+):
+    conn = _db(request)
+
+    def _g_rank(g: str) -> int:
+        return 0 if g == 'female' else (2 if g == 'male' else 1)
+
+    total = conn.execute(
+        "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+    ).fetchone()[0]
+
+    fc_ids = [
+        r[0] for r in conn.execute("""
+            SELECT fmr.file_curation_id
+            FROM face_match_result fmr
+            WHERE fmr.status = 'pending'
+            GROUP BY fmr.file_curation_id
+            ORDER BY MAX(fmr.similarity) DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset)).fetchall()
+    ]
+
+    items = []
+    for fc_id in fc_ids:
+        fc = conn.execute(
+            "SELECT path, mount, studio, title, release_date, resolution FROM file_curation WHERE id=?",
+            (fc_id,),
+        ).fetchone()
+        if not fc:
+            continue
+
+        candidates_raw = conn.execute("""
+            SELECT fmr.id, fmr.performer_id, p.canonical_name,
+                   COALESCE(p.gender,'unknown') AS gender,
+                   fmr.similarity, fmr.match_count,
+                   p.profile_thumb
+            FROM face_match_result fmr
+            JOIN performer p ON p.id = fmr.performer_id
+            WHERE fmr.file_curation_id = ? AND fmr.status = 'pending'
+            ORDER BY CASE COALESCE(p.gender,'unknown')
+                         WHEN 'female'  THEN 0
+                         WHEN 'unknown' THEN 1
+                         ELSE 2
+                     END ASC,
+                     fmr.match_count DESC, fmr.similarity DESC
+        """, (fc_id,)).fetchall()
+
+        candidates = []
+        for i, c in enumerate(candidates_raw):
+            # Up to 4 reference thumbnails for this performer
+            ref_thumbs = [
+                _thumb_url(r[0])
+                for r in conn.execute("""
+                    SELECT thumbnail_path FROM face_embedding
+                    WHERE performer_id=? AND thumbnail_path IS NOT NULL
+                    ORDER BY COALESCE(quality_score,0) DESC LIMIT 4
+                """, (c[1],)).fetchall()
+                if r[0]
+            ]
+            candidates.append({
+                'match_id': c[0],
+                'performer_id': c[1],
+                'name': c[2],
+                'gender': c[3],
+                'similarity': round(float(c[4]), 3),
+                'match_count': int(c[5]),
+                'rank': i + 1,
+                'profile_thumb': _thumb_url(c[6]),
+                'ref_thumbs': ref_thumbs,
+            })
+
+        is_ambiguous = False
+        if len(candidates) >= 2:
+            p0, p1 = candidates[0], candidates[1]
+            if _g_rank(p1['gender']) <= _g_rank(p0['gender']):
+                if p1['match_count'] >= 0.7 * p0['match_count']:
+                    is_ambiguous = True
+
+        items.append({
+            'file_id': fc_id,
+            'filename': Path(fc[0]).name,
+            'path': fc[0],
+            'mount': fc[1] or '',
+            'studio': fc[2] or '',
+            'title': fc[3] or '',
+            'release_date': fc[4] or '',
+            'resolution': fc[5] or '',
+            'is_ambiguous': is_ambiguous,
+            'candidates': candidates,
+        })
+
+    return JSONResponse({'total': total, 'offset': offset, 'items': items})
+
+
+@router.post('/api/face/accept/{match_id}')
+async def face_accept(match_id: int, request: Request):
+    conn = _db(request)
+    row = conn.execute(
+        "SELECT file_curation_id FROM face_match_result WHERE id=?", (match_id,)
+    ).fetchone()
+    if not row:
+        return JSONResponse({'ok': False, 'error': 'not_found'}, status_code=404)
+
+    fc_id = row[0]
+    secondaries = [
+        r[0] for r in conn.execute(
+            "SELECT id FROM face_match_result WHERE file_curation_id=? AND id!=? AND status='pending'",
+            (fc_id, match_id),
+        ).fetchall()
+    ]
+    try:
+        from app.face.matcher import accept_match
+        accept_match(conn, match_id, secondary_match_ids=secondaries or None)
+        remaining = conn.execute(
+            "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+        ).fetchone()[0]
+        return JSONResponse({'ok': True, 'remaining': remaining})
+    except Exception as exc:
+        log.exception('face_accept failed match_id=%s', match_id)
+        return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
+
+
+@router.post('/api/face/reject/{match_id}')
+async def face_reject(match_id: int, request: Request):
+    conn = _db(request)
+    cur = conn.execute(
+        "UPDATE face_match_result SET status='rejected', resolved_at=datetime('now') "
+        "WHERE id=? AND status='pending'",
+        (match_id,),
+    )
+    if cur.rowcount == 0:
+        return JSONResponse({'ok': False, 'error': 'not_found_or_not_pending'}, status_code=404)
+    conn.commit()
+    remaining = conn.execute(
+        "SELECT COUNT(DISTINCT file_curation_id) FROM face_match_result WHERE status='pending'"
+    ).fetchone()[0]
+    return JSONResponse({'ok': True, 'remaining': remaining})
+
+
 @router.get('/api/face-status')
 async def api_face_status(request: Request) -> JSONResponse:
     """Live face-recognition queue snapshot — running jobs, throughput, ETA."""

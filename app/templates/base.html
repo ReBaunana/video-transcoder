@@ -453,6 +453,7 @@
       <a href="/"           class="nav-tab {{ 'active' if page_id == 'transcoder' else '' }}">Transcoder</a>
       <a href="/library"    class="nav-tab {{ 'active' if page_id == 'library'    else '' }}">Library</a>
       <a href="/performers" class="nav-tab {{ 'active' if page_id == 'performers' else '' }}">Performers</a>
+      <a href="/review"     class="nav-tab {{ 'active' if page_id == 'review'     else '' }}" id="reviewTab">Review</a>
     </nav>
     {% block header_left_after_nav %}{% endblock %}
   </div>
@@ -523,6 +524,20 @@
   }
   _setTopbarOffset();
   window.addEventListener('resize', _setTopbarOffset);
+
+  // Update Review tab badge with pending count
+  async function _updateReviewBadge() {
+    try {
+      const d = await fetch('/api/review/queue?limit=1').then(r => r.json());
+      const tab = document.getElementById('reviewTab');
+      if (!tab) return;
+      const n = d.total || 0;
+      tab.textContent = n > 0 ? `Review (${n})` : 'Review';
+      tab.style.color = n > 0 ? 'var(--yellow)' : '';
+    } catch(e) {}
+  }
+  _updateReviewBadge();
+  setInterval(_updateReviewBadge, 30000);
 
   setInterval(async () => {
     try {
