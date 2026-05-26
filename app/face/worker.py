@@ -220,6 +220,10 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
     Includes 'unknown' status files (TPDB couldn't identify them, but face
     recognition may still match performers). Excludes 'skipped' and 'renamed'.
     Skips files that already have an assigned performer or accepted face match.
+
+    Files that have sub-threshold pending matches and were scanned within the
+    last 24 h are also skipped — use enqueue_pending_rematch() to force an
+    immediate deeper re-scan of those files.
     """
     cur = conn.cursor()
     try:
@@ -241,6 +245,21 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
                     WHERE j.file_curation_id = fc.id
                       AND j.job_type = 'match_unknown'
                       AND j.status IN ('pending', 'running')
+               )
+               AND NOT (
+                   -- Has sub-threshold pending match AND was scanned in the last 24 h.
+                   -- Prevents hourly re-scan loop for files that never auto-accept.
+                   EXISTS (
+                       SELECT 1 FROM face_match_result mr2
+                        WHERE mr2.file_curation_id = fc.id AND mr2.status = 'pending'
+                   )
+                   AND EXISTS (
+                       SELECT 1 FROM face_recognition_job j2
+                        WHERE j2.file_curation_id = fc.id
+                          AND j2.status = 'done'
+                          AND j2.finished_at IS NOT NULL
+                          AND j2.finished_at > (strftime('%s','now') - 86400)
+                   )
                )
             """
         )
@@ -285,6 +304,44 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
 
     log.info("enqueue_all_unknown: enqueued=%d skipped=%d", enqueued, len(ids) - enqueued)
     return enqueued
+
+
+def enqueue_pending_rematch(conn: sqlite3.Connection) -> int:
+    """Force a fresh deeper scan for all files with sub-threshold pending matches.
+
+    Bypasses the 24 h cooldown enforced by enqueue_all_unknown.  Use when new
+    performer embeddings have been added, or to kick off an explicit rescan of
+    the manual-review backlog.  Jobs are reset at the same priority (100) as
+    normal unknown scans.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE face_recognition_job
+               SET status = 'pending', priority = 100, attempts = 0,
+                   last_error = NULL, started_at = NULL, finished_at = NULL,
+                   enqueued_at = ?
+             WHERE status = 'done'
+               AND file_curation_id IN (
+                   SELECT DISTINCT file_curation_id
+                     FROM face_match_result
+                    WHERE status = 'pending'
+               )
+               AND file_curation_id NOT IN (
+                   SELECT file_curation_id FROM file_performer
+               )
+            """,
+            (int(time.time()),),
+        )
+        n = cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        log.exception("enqueue_pending_rematch failed")
+        return 0
+    log.info("enqueue_pending_rematch: re-queued %d jobs for deeper rescan", n)
+    return n
 
 
 def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:

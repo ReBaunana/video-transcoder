@@ -329,7 +329,9 @@ def _run_auto_rename(db_path: str) -> None:
             )
             if primary[1] >= _AAT and top_is_dominant:
                 try:
-                    _accept_match(conn, primary[0])
+                    secondary_match_ids = [int(s[0]) for s in secondaries]
+                    _accept_match(conn, primary[0],
+                                  secondary_match_ids=secondary_match_ids or None)
                     batch_accepted += 1
                 except Exception:
                     _log.exception('auto_rename: batch-accept failed fc_id=%s', fc_id)
@@ -1005,5 +1007,24 @@ async def api_backup():
         path = db_backup(db, keep=transcoder.BACKUP_KEEP)
         last_backup_at = datetime.now().strftime('%Y-%m-%d %H:%M')
         return JSONResponse({'ok': True, 'path': str(path), 'at': last_backup_at})
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
+
+
+@app.post('/api/face/rematch-pending')
+async def api_face_rematch_pending():
+    """Re-queue files with sub-threshold pending face matches for a deeper rescan.
+
+    Bypasses the 24 h cooldown — use after adding new performer embeddings or
+    to force an immediate pass with more sampling windows on the manual-review backlog.
+    """
+    try:
+        from app.face.worker import enqueue_pending_rematch
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        try:
+            n = enqueue_pending_rematch(conn)
+        finally:
+            conn.close()
+        return JSONResponse({'ok': True, 'requeued': n})
     except Exception as e:
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)

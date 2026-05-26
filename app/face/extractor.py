@@ -65,17 +65,17 @@ def ensure_thumb_dir() -> None:
         log.debug("ensure_thumb_dir: chmod skipped (not owner)")
 
 
-_WINDOW_POSITIONS = (0.05, 0.30, 0.60, 0.85)  # fraction of duration for each sample window
+_WINDOW_POSITIONS = (0.05, 0.17, 0.30, 0.42, 0.55, 0.67, 0.80, 0.92)  # 8 windows across full video
 _WINDOW_SEC = 30.0        # length of each window — keeps NFS I/O bounded
 _FRAMES_PER_WINDOW = 10   # frames per window (one every 3s)
 
 
 def _sample_windows(duration_sec: float) -> list[tuple[float, float]]:
-    """Return (start_t, end_t) for up to 4 windows spread across the video.
+    """Return (start_t, end_t) for up to 8 windows spread across the video.
 
-    Each window is 30 seconds long.  Four windows at 5%/30%/60%/85% give
-    full temporal coverage.  Tested on a 2 GB 1080p HEVC over NFS: all 4
-    windows complete in ~27s total (vs. timeout with the old 87% window).
+    Each window is 30 seconds long.  Eight windows at evenly spaced positions
+    (5%–92%) give dense temporal coverage: 80 frames total, ~54s over NFS
+    for a 2 GB 1080p HEVC file.
     """
     if duration_sec <= 10.0:
         return []
@@ -130,12 +130,11 @@ def _probe_video_codec(video_path: str) -> str | None:
 
 
 def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
-    """Extract frames from 4 windows spread across the full video duration.
+    """Extract frames from 8 windows spread across the full video duration.
 
-    Each window is 30 seconds long (10 frames, one every 3s).  Windows at
-    5%/30%/60%/85% of duration give full temporal coverage while keeping
-    NFS I/O bounded — each ffmpeg call takes ~8s over Gigabit NFS vs.
-    the previous single-window approach that reliably timed out on long files.
+    Each window is 30 seconds long (10 frames, one every 3s).  Eight windows
+    at evenly spaced positions (5%–92%) give dense temporal coverage —
+    80 frames total, ~54s over Gigabit NFS for a 2 GB 1080p HEVC file.
 
     Uses CUVID hardware decode when the codec is supported; falls back to
     software decode (-threads 2) per window on failure.

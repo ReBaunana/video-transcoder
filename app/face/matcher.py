@@ -318,8 +318,8 @@ def match_video(
         raise
 
     # Auto-accept: primary performer = most frequent by frame count.
-    # Secondary performers (fewer frames) go into file_performer for filename only.
-    # Deferred import avoids circular load: worker.py imports matcher at module level.
+    # Secondary performers (fewer frames) are passed to accept_match so they
+    # land in file_performer before TPDB runs and appear in the filename.
     if candidates:
         by_frame = sorted(candidates, key=lambda c: c["match_count"], reverse=True)
         primary = by_frame[0]
@@ -331,60 +331,23 @@ def match_video(
         )
         if primary["similarity"] >= AUTO_ACCEPT_THRESHOLD and top_is_dominant:
             try:
-                row = conn.execute(
+                prow = conn.execute(
                     "SELECT id FROM face_match_result WHERE file_curation_id=? AND performer_id=?",
                     (file_curation_id, primary["performer_id"]),
                 ).fetchone()
-                if row is not None:
-                    match_id = int(row[0])
-                    accept_match(conn, match_id)
-                    # Insert secondary performers into file_performer (filename only, not folder).
-                    for pos, sec in enumerate(secondaries, start=1):
-                        conn.execute(
-                            """INSERT OR IGNORE INTO file_performer
-                                   (file_curation_id, performer_id, position, source)
-                               VALUES (?, ?, ?, 'face_recognition')""",
-                            (file_curation_id, sec["performer_id"], pos),
-                        )
-                    if secondaries:
-                        conn.commit()
-                        try:
-                            fc_row = conn.execute(
-                                "SELECT studio, release_date, title, resolution, path FROM file_curation WHERE id = ?",
-                                (file_curation_id,),
-                            ).fetchone()
-                            p_names = [
-                                r[0] for r in conn.execute(
-                                    """SELECT p.canonical_name FROM file_performer fp
-                                         JOIN performer p ON p.id = fp.performer_id
-                                        WHERE fp.file_curation_id = ? ORDER BY fp.position""",
-                                    (file_curation_id,),
-                                ).fetchall()
-                            ]
-                            if fc_row and p_names:
-                                import os as _os
-                                from app.curation.tpdb import _rebuild_proposed_filename
-                                ext = _os.path.splitext(str(fc_row[4]))[1]
-                                proposed = _rebuild_proposed_filename(
-                                    studio=fc_row[0], release_date=fc_row[1], title=fc_row[2],
-                                    performers=p_names, resolution=fc_row[3], ext=ext,
-                                )
-                                if proposed:
-                                    conn.execute(
-                                        """UPDATE file_curation SET proposed_filename = ?
-                                            WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
-                                        (proposed, file_curation_id),
-                                    )
-                                    conn.commit()
-                                    log.info(
-                                        "auto-accept: multi-performer file_id=%s performers=%r",
-                                        file_curation_id, p_names,
-                                    )
-                        except Exception:
-                            log.exception(
-                                "auto-accept: secondary filename rebuild failed file_id=%s",
-                                file_curation_id,
-                            )
+                if prow is not None:
+                    match_id = int(prow[0])
+                    # Resolve secondary match IDs so accept_match can insert them
+                    # into file_performer before TPDB rebuilds the filename.
+                    secondary_match_ids: list[int] = []
+                    for sec in secondaries:
+                        srow = conn.execute(
+                            "SELECT id FROM face_match_result WHERE file_curation_id=? AND performer_id=?",
+                            (file_curation_id, sec["performer_id"]),
+                        ).fetchone()
+                        if srow:
+                            secondary_match_ids.append(int(srow[0]))
+                    accept_match(conn, match_id, secondary_match_ids=secondary_match_ids or None)
                     try:
                         from app.face.worker import enqueue_seed_for_performer
                         enqueue_seed_for_performer(conn, primary["performer_id"])
@@ -396,7 +359,7 @@ def match_video(
                     log.info(
                         "auto-accept: file_id=%s performer=%r sim=%.3f match_id=%s secondaries=%d",
                         file_curation_id, primary["performer_name"], primary["similarity"],
-                        match_id, len(secondaries),
+                        match_id, len(secondary_match_ids),
                     )
             except Exception:
                 log.exception(
@@ -414,8 +377,19 @@ def match_video(
     return persisted
 
 
-def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
-    """Accept a face match suggestion."""
+def accept_match(
+    conn: sqlite3.Connection,
+    match_id: int,
+    secondary_match_ids: list[int] | None = None,
+) -> None:
+    """Accept a face match suggestion.
+
+    secondary_match_ids: face_match_result IDs for additional performers to
+    insert into file_performer at positions 1, 2, …  They appear in the
+    filename but do not affect folder assignment or TPDB lookup (primary is
+    always performer_names[0]).  Must be passed by the caller so that
+    TPDB reenrich sees all performers when it rebuilds the filename.
+    """
     now = int(time.time())
     cur = conn.cursor()
     try:
@@ -437,6 +411,7 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
             (now, match_id),
         )
 
+        # Insert primary at position 0.
         cur.execute(
             """
             INSERT OR IGNORE INTO file_performer
@@ -445,6 +420,24 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
             """,
             (file_curation_id, performer_id),
         )
+
+        # Insert secondaries BEFORE TPDB lookup so tpdb_reenrich sees all
+        # performers and can include them in the proposed filename.
+        if secondary_match_ids:
+            for pos, sec_mid in enumerate(secondary_match_ids, start=1):
+                sec_row = conn.execute(
+                    "SELECT performer_id FROM face_match_result WHERE id = ?",
+                    (sec_mid,),
+                ).fetchone()
+                if sec_row:
+                    cur.execute(
+                        """
+                        INSERT OR IGNORE INTO file_performer
+                            (file_curation_id, performer_id, position, source)
+                        VALUES (?, ?, ?, 'face_recognition')
+                        """,
+                        (file_curation_id, int(sec_row[0]), pos),
+                    )
 
         cur.execute(
             """
@@ -473,41 +466,9 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
         log.exception("accept_match: failed match_id=%s", match_id)
         raise
 
-    # Rebuild proposed_filename with the newly accepted performer and
-    # auto-approve so the rename scheduler can pick it up immediately.
-    try:
-        fc_row = conn.execute(
-            "SELECT studio, release_date, title, resolution, path FROM file_curation WHERE id = ?",
-            (file_curation_id,),
-        ).fetchone()
-        performer_names = [
-            r[0] for r in conn.execute(
-                """SELECT p.canonical_name FROM file_performer fp
-                     JOIN performer p ON p.id = fp.performer_id
-                    WHERE fp.file_curation_id = ? ORDER BY fp.position""",
-                (file_curation_id,),
-            ).fetchall()
-        ]
-        if fc_row and performer_names:
-            import os as _os
-            from app.curation.tpdb import _rebuild_proposed_filename
-            ext = _os.path.splitext(str(fc_row[4]))[1]
-            proposed = _rebuild_proposed_filename(
-                studio=fc_row[0], release_date=fc_row[1], title=fc_row[2],
-                performers=performer_names, resolution=fc_row[3], ext=ext,
-            )
-            if proposed:
-                conn.execute(
-                    """UPDATE file_curation SET proposed_filename = ?, status = 'approved'
-                        WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
-                    (proposed, file_curation_id),
-                )
-                conn.commit()
-                log.info("accept_match: auto-approved file_id=%s proposed=%r", file_curation_id, proposed)
-    except Exception:
-        log.exception("accept_match: proposed_filename rebuild failed file_id=%s", file_curation_id)
-
     # Search TPDB for the scene by performer + duration to enrich metadata.
+    # Primary performer (position=0) drives the TPDB query; all performers
+    # in file_performer (primary + secondaries) appear in the filename.
     try:
         from app.curation.tpdb import tpdb_reenrich_by_performer_duration
         result = tpdb_reenrich_by_performer_duration(conn, file_curation_id)
@@ -524,8 +485,43 @@ def accept_match(conn: sqlite3.Connection, match_id: int) -> None:
     except Exception:
         log.exception("accept_match: tpdb_reenrich failed file_id=%s", file_curation_id)
 
-    log.info("accept_match: match_id=%s file_id=%s performer_id=%s",
-             match_id, file_curation_id, performer_id)
+    # Rebuild proposed_filename if TPDB didn't already set it (e.g. not configured
+    # or no match found) so the rename scheduler always has a name to work with.
+    try:
+        fc_row = conn.execute(
+            "SELECT studio, release_date, title, resolution, path, proposed_filename FROM file_curation WHERE id = ?",
+            (file_curation_id,),
+        ).fetchone()
+        if fc_row and fc_row[5] is None:
+            import os as _os
+            from app.curation.tpdb import _rebuild_proposed_filename
+            performer_names = [
+                r[0] for r in conn.execute(
+                    """SELECT p.canonical_name FROM file_performer fp
+                         JOIN performer p ON p.id = fp.performer_id
+                        WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+                    (file_curation_id,),
+                ).fetchall()
+            ]
+            if performer_names:
+                ext = _os.path.splitext(str(fc_row[4]))[1]
+                proposed = _rebuild_proposed_filename(
+                    studio=fc_row[0], release_date=fc_row[1], title=fc_row[2],
+                    performers=performer_names, resolution=fc_row[3], ext=ext,
+                )
+                if proposed:
+                    conn.execute(
+                        """UPDATE file_curation SET proposed_filename = ?, status = 'approved'
+                            WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
+                        (proposed, file_curation_id),
+                    )
+                    conn.commit()
+                    log.info("accept_match: fallback filename file_id=%s proposed=%r", file_curation_id, proposed)
+    except Exception:
+        log.exception("accept_match: fallback filename rebuild failed file_id=%s", file_curation_id)
+
+    log.info("accept_match: match_id=%s file_id=%s performer_id=%s secondaries=%d",
+             match_id, file_curation_id, performer_id, len(secondary_match_ids or []))
 
 
 def reject_match(conn: sqlite3.Connection, match_id: int) -> None:
