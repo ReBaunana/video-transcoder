@@ -70,7 +70,7 @@ _WINDOW_POSITIONS = (  # 20 windows, evenly spaced 3%–97%
     0.52, 0.57, 0.62, 0.67, 0.72, 0.77, 0.82, 0.87, 0.92, 0.97,
 )
 _WINDOW_SEC = 30.0        # length of each window — keeps NFS I/O bounded
-_FRAMES_PER_WINDOW = 4    # frames per window — was 10; reduced to cut serialized GPU calls by 60%
+_FRAMES_PER_WINDOW = 10   # frames per window (one every 3s)
 
 
 def _sample_windows(duration_sec: float) -> list[tuple[float, float]]:
