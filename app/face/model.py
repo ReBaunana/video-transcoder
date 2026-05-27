@@ -47,8 +47,9 @@ def get_face_app():
                         raise RuntimeError("CUDAExecutionProvider not in available providers")
                     # Explicit CUDA provider options:
                     # - kNextPowerOfTwo arena reduces fragmentation on 4GB VRAM
-                    # - EXHAUSTIVE cuDNN search picks the fastest conv algo
-                    #   (one-time cost per session, amortized over many frames)
+                    # - DEFAULT cuDNN search: EXHAUSTIVE runs a full benchmark on
+                    #   every model reload (every 50 jobs) and blocks all workers
+                    #   for 10-50 minutes; DEFAULT is fast and plenty fast enough
                     # - do_copy_in_default_stream avoids stream sync surprises
                     cuda_providers = [
                         (
@@ -56,7 +57,7 @@ def get_face_app():
                             {
                                 "device_id": 0,
                                 "arena_extend_strategy": "kNextPowerOfTwo",
-                                "cudnn_conv_algo_search": "EXHAUSTIVE",
+                                "cudnn_conv_algo_search": "DEFAULT",
                                 "do_copy_in_default_stream": True,
                             },
                         ),
