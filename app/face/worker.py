@@ -244,22 +244,7 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
                    SELECT 1 FROM face_recognition_job j
                     WHERE j.file_curation_id = fc.id
                       AND j.job_type = 'match_unknown'
-                      AND j.status IN ('pending', 'running')
-               )
-               AND NOT (
-                   -- Has sub-threshold pending match AND was scanned in the last 24 h.
-                   -- Prevents hourly re-scan loop for files that never auto-accept.
-                   EXISTS (
-                       SELECT 1 FROM face_match_result mr2
-                        WHERE mr2.file_curation_id = fc.id AND mr2.status = 'pending'
-                   )
-                   AND EXISTS (
-                       SELECT 1 FROM face_recognition_job j2
-                        WHERE j2.file_curation_id = fc.id
-                          AND j2.status = 'done'
-                          AND j2.finished_at IS NOT NULL
-                          AND j2.finished_at > (strftime('%s','now') - 86400)
-                   )
+                      AND j.status IN ('pending', 'running', 'done')
                )
             """
         )
@@ -271,8 +256,9 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
     enqueued = 0
     for fid in ids:
         try:
-            # Flip done/failed seed_known rows to match_unknown/pending in place;
+            # Flip done seed_known (or any failed) rows to match_unknown/pending in place;
             # the UNIQUE(file_curation_id) constraint blocks a plain INSERT.
+            # Never flip a done match_unknown job — those belong in Review.
             cur.execute(
                 """
                 UPDATE face_recognition_job
@@ -280,7 +266,8 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
                        attempts = 0, last_error = NULL,
                        started_at = NULL, finished_at = NULL
                  WHERE file_curation_id = ?
-                   AND status IN ('done', 'failed')
+                   AND (status = 'failed'
+                        OR (status = 'done' AND job_type = 'seed_known'))
                 """,
                 (fid,),
             )
