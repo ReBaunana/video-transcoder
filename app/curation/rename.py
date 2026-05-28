@@ -60,7 +60,11 @@ def _find_performer_home(folder_name: str, default_mount: str) -> str:
     Scans HOME_MOUNTS (sorted for determinism) for an existing folder
     matching folder_name. Returns the first one found. Falls back to
     /media/<default_mount>/<folder_name> if none exists.
+
+    Alphabetically first mount wins when the folder exists on multiple mounts.
     """
+    if default_mount not in HOME_MOUNTS:
+        raise ValueError(f"default_mount {default_mount!r} is not in HOME_MOUNTS ({sorted(HOME_MOUNTS)})")
     for mount in sorted(HOME_MOUNTS):
         candidate = f"/media/{mount}/{folder_name}"
         if os.path.isdir(candidate):
