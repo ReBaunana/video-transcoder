@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -144,9 +145,10 @@ def _performer_folder_move(
     except OSError as exc:
         return {"ok": False, "moved": False, "error": f"mkdir_error:{exc}"}
 
-    # Filesystem move.
+    # Filesystem move.  Use shutil.move to support cross-device moves (the
+    # performer folder may live on a different NAS mount than the source file).
     try:
-        os.rename(current_path, target_path)
+        shutil.move(current_path, target_path)
     except OSError as exc:
         return {"ok": False, "moved": False, "error": f"os_error:{exc}"}
 
@@ -175,7 +177,7 @@ def _performer_folder_move(
     except Exception as db_exc:
         revert_error = None
         try:
-            os.rename(target_path, current_path)
+            shutil.move(target_path, current_path)
         except OSError as rev_exc:
             revert_error = str(rev_exc)
         error = f"db_error:{db_exc}"
