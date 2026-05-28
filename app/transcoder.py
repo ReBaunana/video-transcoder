@@ -19,6 +19,7 @@ PRESET             = os.getenv('FFMPEG_PRESET', 'fast')
 DRY_RUN                = os.getenv('DRY_RUN', 'false').lower() == 'true'
 RETRANSCODE_ORIGINALS  = False
 DISABLED_MOUNTS: set   = set()
+PERFORMER_DEFAULT_MOUNT: str = 'ddMovie'    # home mount for new performers
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))    # NVENC workers
 VAAPI_WORKERS      = int(os.getenv('VAAPI_WORKERS', '0'))             # Intel VAAPI workers
 FACE_WORKERS: int  = 3                                                # Face recognition workers
@@ -61,7 +62,7 @@ _killed_slots: set[int] = set()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, FACE_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS
+    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, FACE_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS, PERFORMER_DEFAULT_MOUNT
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -76,6 +77,9 @@ def load_settings():
         DRY_RUN                = bool(data.get('dry_run', DRY_RUN))
         RETRANSCODE_ORIGINALS  = bool(data.get('retranscode_originals', RETRANSCODE_ORIGINALS))
         DISABLED_MOUNTS        = set(data.get('disabled_mounts', list(DISABLED_MOUNTS)))
+        raw_pdm = data.get('performer_default_mount', PERFORMER_DEFAULT_MOUNT)
+        if raw_pdm in {'ddMovie', 'intensoP1', 'intensoP2'}:
+            PERFORMER_DEFAULT_MOUNT = raw_pdm
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         VAAPI_WORKERS     = max(0, min(int(data.get('vaapi_workers', VAAPI_WORKERS)), 3))
         FACE_WORKERS      = max(1, min(int(data.get('face_workers', FACE_WORKERS)), 8))
@@ -106,6 +110,7 @@ def save_settings():
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
             'retranscode_originals': RETRANSCODE_ORIGINALS,
             'disabled_mounts':       sorted(DISABLED_MOUNTS),
+            'performer_default_mount': PERFORMER_DEFAULT_MOUNT,
         }))
         tmp.replace(SETTINGS_PATH)
     except Exception:

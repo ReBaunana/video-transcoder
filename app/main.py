@@ -401,7 +401,7 @@ def _run_auto_rename(db_path: str) -> None:
 
         conn.commit()  # close any implicit transaction before execute_rename opens BEGIN IMMEDIATE
         from app.curation.rename import execute_batch_rename
-        result = execute_batch_rename(conn, mount=None, limit=200)
+        result = execute_batch_rename(conn, mount=None, limit=200, default_mount=transcoder.PERFORMER_DEFAULT_MOUNT)
         renamed = result.get('ok', 0)
         errors = result.get('errors') or []
         _log.info('auto_rename: renamed=%d failed=%d', renamed, result.get('failed', 0))
@@ -783,6 +783,7 @@ async def dashboard(request: Request):
             'disabled_mounts':         list(transcoder.DISABLED_MOUNTS),
             'cache_mount_stats':       get_cache_mount_stats(db),
             'retranscode_originals':   transcoder.RETRANSCODE_ORIGINALS,
+            'performer_default_mount': transcoder.PERFORMER_DEFAULT_MOUNT,
         })
 
 
@@ -896,6 +897,7 @@ async def api_get_config():
         'backup_interval_h':      transcoder.BACKUP_INTERVAL_H,
         'backup_keep':            transcoder.BACKUP_KEEP,
         'schedule_hour':          transcoder.SCHEDULE_HOUR,
+        'performer_default_mount': transcoder.PERFORMER_DEFAULT_MOUNT,
     })
 
 
@@ -922,6 +924,8 @@ async def api_set_config(request: Request):
         transcoder.BACKUP_KEEP = max(1, min(int(body['backup_keep']), 30))
     if 'schedule_hour' in body:
         transcoder.SCHEDULE_HOUR = max(-1, min(int(body['schedule_hour']), 23))
+    if 'performer_default_mount' in body and body['performer_default_mount'] in {'ddMovie', 'intensoP1', 'intensoP2'}:
+        transcoder.PERFORMER_DEFAULT_MOUNT = body['performer_default_mount']
     transcoder.save_settings()
     return JSONResponse({
         'ok':                    True,
@@ -933,7 +937,8 @@ async def api_set_config(request: Request):
         'vaapi_workers':         transcoder.VAAPI_WORKERS,
         'backup_interval_h':     transcoder.BACKUP_INTERVAL_H,
         'backup_keep':           transcoder.BACKUP_KEEP,
-        'schedule_hour':         transcoder.SCHEDULE_HOUR,
+        'schedule_hour':          transcoder.SCHEDULE_HOUR,
+        'performer_default_mount': transcoder.PERFORMER_DEFAULT_MOUNT,
     })
 
 
