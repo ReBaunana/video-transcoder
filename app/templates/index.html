@@ -1606,6 +1606,15 @@
       </div>
     </div>
     <div class="setting-card">
+      <div class="setting-label">Performer Default Mount</div>
+      <select id="cfgPerformerMount" class="setting-select" onchange="savePerformerMount()">
+        {% for m in ['ddMovie', 'intensoP1', 'intensoP2'] %}
+        <option value="{{ m }}" {{ 'selected' if m == performer_default_mount else '' }}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      <div class="setting-hint">Home mount for new performers</div>
+    </div>
+    <div class="setting-card">
       <div class="setting-label">Dry Run</div>
       <button id="cfgDryRun" class="toggle-btn {{ 'active' if dry_run else '' }}"
               onclick="toggleDryRun()">{{ 'ON' if dry_run else 'OFF' }}</button>
@@ -2402,6 +2411,17 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cq, preset }),
+      });
+    } catch (_) {}
+  }
+
+  async function savePerformerMount() {
+    try {
+      const mount = document.getElementById('cfgPerformerMount').value;
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ performer_default_mount: mount }),
       });
     } catch (_) {}
   }
