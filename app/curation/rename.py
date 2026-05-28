@@ -6,11 +6,11 @@ plus a single filesystem `os.rename`. If the FS move succeeds but the DB
 update fails, we attempt to move the file back to its original path so
 state cannot diverge silently.
 
-For mounts listed in PERFORMER_FOLDER_MOUNTS (currently: ddMovie), a
-second move follows the rename: the file is placed into a per-performer
-subfolder named after the primary performer (position 0 in file_performer).
-Files with no accepted performer stay in the mount root. The folder move
-is non-fatal — a failure there does not roll back the rename.
+For mounts listed in HOME_MOUNTS or INBOX_MOUNTS, a second move follows
+the rename: the file is placed into a per-performer subfolder named after
+the primary performer (position 0 in file_performer). Files with no
+accepted performer stay in the mount root. The folder move is non-fatal
+— a failure there does not roll back the rename.
 """
 
 from __future__ import annotations
@@ -28,8 +28,11 @@ _MAX_PATH_COMPONENT = 255  # Linux NAME_MAX on ext4/btrfs/xfs
 # Characters not allowed in directory names on Linux/NAS.
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
-# Mounts where renamed files are moved into per-performer subfolders.
-PERFORMER_FOLDER_MOUNTS: frozenset[str] = frozenset({'ddMovie'})
+# Mounts where performer folders can be hosted — scanned at move time.
+HOME_MOUNTS: frozenset[str] = frozenset({'ddMovie', 'intensoP1', 'intensoP2'})
+
+# Source-only mounts — files move out, no permanent performer folders live here.
+INBOX_MOUNTS: frozenset[str] = frozenset({'jdownloader'})
 
 
 def _now_sql() -> str:
@@ -51,12 +54,27 @@ def _sanitize_folder_name(name: str) -> str:
     return sanitized[:200]
 
 
+def _find_performer_home(folder_name: str, default_mount: str) -> str:
+    """Return the directory path where a performer's files should go.
+
+    Scans HOME_MOUNTS (sorted for determinism) for an existing folder
+    matching folder_name. Returns the first one found. Falls back to
+    /media/<default_mount>/<folder_name> if none exists.
+    """
+    for mount in sorted(HOME_MOUNTS):
+        candidate = f"/media/{mount}/{folder_name}"
+        if os.path.isdir(candidate):
+            return candidate
+    return f"/media/{default_mount}/{folder_name}"
+
+
 def _performer_folder_move(
     conn: sqlite3.Connection,
     file_curation_id: int,
     current_path: str,
     mount: str,
     rename_log_id: int,
+    default_mount: str = 'ddMovie',
 ) -> dict:
     """Move a just-renamed file into its primary performer's subfolder.
 
@@ -94,8 +112,7 @@ def _performer_folder_move(
     if not folder_name:
         return {"ok": False, "moved": False, "error": "empty_folder_name"}
 
-    mount_root = f"/media/{mount}"
-    target_dir = os.path.join(mount_root, folder_name)
+    target_dir = _find_performer_home(folder_name, default_mount)
     basename = os.path.basename(current_path)
     target_path = os.path.join(target_dir, basename)
 
@@ -176,10 +193,14 @@ def _performer_folder_move(
     return {"ok": True, "moved": True, "from": current_path, "to": target_path}
 
 
-def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
+def execute_rename(
+    conn: sqlite3.Connection,
+    file_curation_id: int,
+    default_mount: str = 'ddMovie',
+) -> dict:
     """Atomically rename one approved file.
 
-    For mounts in PERFORMER_FOLDER_MOUNTS, also moves the file into the
+    For mounts in HOME_MOUNTS | INBOX_MOUNTS, also moves the file into the
     performer's subfolder after the rename commits.
 
     Returns {
@@ -274,7 +295,7 @@ def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
                 (int(file_curation_id),),
             )
             conn.commit()
-            folder_move = _try_folder_move(conn, file_curation_id, to_path, mount, rename_log_id)
+            folder_move = _try_folder_move(conn, file_curation_id, to_path, mount, rename_log_id, default_mount)
             final_path = folder_move.get("to", to_path) if folder_move and folder_move.get("moved") else to_path
             return {
                 "ok": True, "from": from_path, "to": final_path,
@@ -410,7 +431,7 @@ def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
                 "folder_move": None,
             }
 
-        folder_move = _try_folder_move(conn, file_curation_id, to_path, mount, rename_log_id)
+        folder_move = _try_folder_move(conn, file_curation_id, to_path, mount, rename_log_id, default_mount)
         final_path = folder_move.get("to", to_path) if folder_move and folder_move.get("moved") else to_path
         return {
             "ok": True, "from": from_path, "to": final_path,
@@ -433,22 +454,19 @@ def execute_rename(conn: sqlite3.Connection, file_curation_id: int) -> dict:
 
 def _try_folder_move(
     conn: sqlite3.Connection,
-    file_curation_id: int,
+    fc_id: int,
     renamed_path: str,
-    mount: str | None,
+    mount: str,
     rename_log_id: int,
+    default_mount: str = 'ddMovie',
 ) -> dict | None:
-    """Attempt performer folder move if mount requires it; return result or None."""
-    if not mount or mount not in PERFORMER_FOLDER_MOUNTS:
+    """Trigger performer folder move if the mount participates in curation.
+
+    Returns None (no-op) for mounts outside HOME_MOUNTS | INBOX_MOUNTS.
+    """
+    if mount not in HOME_MOUNTS | INBOX_MOUNTS:
         return None
-    try:
-        return _performer_folder_move(conn, file_curation_id, renamed_path, mount, rename_log_id)
-    except Exception as exc:
-        log.warning(
-            "performer_folder_move unexpected error (non-fatal) fc_id=%s: %s",
-            file_curation_id, exc,
-        )
-        return {"ok": False, "moved": False, "error": f"unexpected:{exc}"}
+    return _performer_folder_move(conn, fc_id, renamed_path, mount, rename_log_id, default_mount)
 
 
 def rollback_rename(conn: sqlite3.Connection, rename_log_id: int) -> dict:
@@ -557,7 +575,10 @@ def rollback_rename(conn: sqlite3.Connection, rename_log_id: int) -> dict:
 
 
 def execute_batch_rename(
-    conn: sqlite3.Connection, mount: str | None = None, limit: int = 50
+    conn: sqlite3.Connection,
+    mount: str | None = None,
+    limit: int = 50,
+    default_mount: str = 'ddMovie',
 ) -> dict:
     """Process up to `limit` approved renames serially.
 
@@ -586,7 +607,7 @@ def execute_batch_rename(
     errors: list[str] = []
 
     for fc_id in ids:
-        result = execute_rename(conn, fc_id)
+        result = execute_rename(conn, fc_id, default_mount)
         if result["ok"]:
             ok += 1
             continue
