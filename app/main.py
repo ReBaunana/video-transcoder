@@ -924,8 +924,10 @@ async def api_set_config(request: Request):
         transcoder.BACKUP_KEEP = max(1, min(int(body['backup_keep']), 30))
     if 'schedule_hour' in body:
         transcoder.SCHEDULE_HOUR = max(-1, min(int(body['schedule_hour']), 23))
-    if 'performer_default_mount' in body and body['performer_default_mount'] in {'ddMovie', 'intensoP1', 'intensoP2'}:
-        transcoder.PERFORMER_DEFAULT_MOUNT = body['performer_default_mount']
+    if 'performer_default_mount' in body:
+        from app.curation.rename import HOME_MOUNTS
+        if body['performer_default_mount'] in HOME_MOUNTS:
+            transcoder.PERFORMER_DEFAULT_MOUNT = body['performer_default_mount']
     transcoder.save_settings()
     return JSONResponse({
         'ok':                    True,

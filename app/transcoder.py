@@ -77,8 +77,9 @@ def load_settings():
         DRY_RUN                = bool(data.get('dry_run', DRY_RUN))
         RETRANSCODE_ORIGINALS  = bool(data.get('retranscode_originals', RETRANSCODE_ORIGINALS))
         DISABLED_MOUNTS        = set(data.get('disabled_mounts', list(DISABLED_MOUNTS)))
+        from app.curation.rename import HOME_MOUNTS as _HOME_MOUNTS
         raw_pdm = data.get('performer_default_mount', PERFORMER_DEFAULT_MOUNT)
-        if raw_pdm in {'ddMovie', 'intensoP1', 'intensoP2'}:
+        if raw_pdm in _HOME_MOUNTS:
             PERFORMER_DEFAULT_MOUNT = raw_pdm
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         VAAPI_WORKERS     = max(0, min(int(data.get('vaapi_workers', VAAPI_WORKERS)), 3))
