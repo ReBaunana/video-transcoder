@@ -187,11 +187,11 @@
   /* ─── Progress box ───────────────────────────── */
   .progress-box {
     background: var(--surface);
-    border: 1px solid rgba(108,142,245,.18);
+    border: 1px solid rgba(249,115,22,.15);
     border-radius: var(--radius);
     padding: 1.15rem 1.4rem;
     margin-bottom: 1.4rem;
-    box-shadow: 0 0 36px rgba(108,142,245,.05);
+    box-shadow: 0 0 36px rgba(249,115,22,.05);
     position: relative;
     overflow: hidden;
   }
@@ -599,11 +599,11 @@
     pointer-events: none;
   }
   .worker-card.active {
-    border-color: rgba(108,142,245,.22);
-    box-shadow: 0 0 28px rgba(108,142,245,.06);
+    border-color: rgba(249,115,22,.22);
+    box-shadow: 0 0 28px rgba(249,115,22,.06);
   }
   .worker-card.active::before {
-    background: linear-gradient(135deg, rgba(108,142,245,.05) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(249,115,22,.05) 0%, transparent 50%);
   }
 
   .worker-header {
@@ -938,13 +938,13 @@
   }
 
   .btn-backup {
-    background: rgba(108,142,245,.08);
-    border-color: rgba(108,142,245,.2);
+    background: rgba(249,115,22,.08);
+    border-color: rgba(249,115,22,.18);
     color: var(--accent);
   }
   .btn-backup:hover {
-    background: rgba(108,142,245,.15);
-    border-color: rgba(108,142,245,.35);
+    background: rgba(249,115,22,.15);
+    border-color: rgba(249,115,22,.35);
   }
 
   /* ─── Advanced dropdown ─────────────────────────── */
@@ -1728,7 +1728,7 @@
       </div>
       <div class="codec-list">
         {# Jinja2 does not support indexing into a literal list, so we assign palette colours via loop.index0 mod 8 #}
-        {% set palette = ['#6c8ef5','#a78bfa','#67e8f9','#34d399','#fbbf24','#f87171','#fb923c','#e879f9'] %}
+        {% set palette = ['#f97316','#a78bfa','#67e8f9','#34d399','#fbbf24','#f87171','#fb923c','#e879f9'] %}
         {% set mx = codec_stats[0].cnt %}
         {% for row in codec_stats %}
         <div class="codec-row">
@@ -2808,7 +2808,7 @@
   {% if codec_stats %}
   (function () {
     const palette = [
-      '#6c8ef5', '#a78bfa', '#67e8f9', '#34d399',
+      '#f97316', '#a78bfa', '#67e8f9', '#34d399',
       '#fbbf24', '#f87171', '#fb923c', '#e879f9'
     ];
 

@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Video Transcoder{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
   <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,9 +20,9 @@
       --text:         #dde0f0;
       --text-muted:   #555878;
       --text-dim:     #2e304a;
-      --accent:       #6c8ef5;
-      --accent-dim:   rgba(108,142,245,.18);
-      --accent-glow:  rgba(108,142,245,.3);
+      --accent:       #f97316;
+      --accent-dim:   rgba(249,115,22,.15);
+      --accent-glow:  rgba(249,115,22,.25);
       --accent-2:     #a78bfa;
       --green:        #34d399;
       --green-bg:     rgba(52,211,153,.09);
@@ -48,9 +46,9 @@
         --text:         #1a1c30;
         --text-muted:   #7880aa;
         --text-dim:     #b4b9d4;
-        --accent:       #4a6ef0;
-        --accent-dim:   rgba(74,110,240,.12);
-        --accent-glow:  rgba(74,110,240,.20);
+        --accent:       #ea580c;
+        --accent-dim:   rgba(234,88,12,.12);
+        --accent-glow:  rgba(234,88,12,.18);
         --accent-2:     #7c5cf4;
         --green:        #0ea869;
         --green-bg:     rgba(14,168,105,.08);
@@ -72,9 +70,9 @@
       --text:         #1a1c30;
       --text-muted:   #7880aa;
       --text-dim:     #b4b9d4;
-      --accent:       #4a6ef0;
-      --accent-dim:   rgba(74,110,240,.12);
-      --accent-glow:  rgba(74,110,240,.20);
+      --accent:       #ea580c;
+      --accent-dim:   rgba(234,88,12,.12);
+      --accent-glow:  rgba(234,88,12,.18);
       --accent-2:     #7c5cf4;
       --green:        #0ea869;
       --green-bg:     rgba(14,168,105,.08);
@@ -95,9 +93,9 @@
       --text:         #dde0f0;
       --text-muted:   #555878;
       --text-dim:     #2e304a;
-      --accent:       #6c8ef5;
-      --accent-dim:   rgba(108,142,245,.18);
-      --accent-glow:  rgba(108,142,245,.3);
+      --accent:       #f97316;
+      --accent-dim:   rgba(249,115,22,.15);
+      --accent-glow:  rgba(249,115,22,.25);
       --accent-2:     #a78bfa;
       --green:        #34d399;
       --green-bg:     rgba(52,211,153,.09);
@@ -118,7 +116,7 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: ui-sans-serif, -apple-system, 'Helvetica Neue', system-ui, sans-serif;
       font-size: 13.5px;
       line-height: 1.55;
       min-height: 100vh;
@@ -250,12 +248,12 @@
     }
     .btn-accent {
       background: var(--accent-dim);
-      border-color: rgba(108,142,245,.3);
+      border-color: rgba(249,115,22,.3);
       color: var(--accent);
     }
     .btn-accent:hover {
-      background: rgba(108,142,245,.28);
-      border-color: rgba(108,142,245,.5);
+      background: rgba(249,115,22,.16);
+      border-color: rgba(249,115,22,.5);
       box-shadow: 0 0 14px var(--accent-glow);
     }
     .btn-sm {
