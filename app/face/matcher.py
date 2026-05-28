@@ -542,6 +542,48 @@ def accept_match(
     except Exception:
         log.exception("accept_match: fallback filename rebuild failed file_id=%s", file_curation_id)
 
+    # Inbox-mount fallback: for files on INBOX_MOUNTS (e.g. jdownloader) that
+    # have no studio/title/date metadata, build Performer-Name.sanitized_stem.ext.
+    # This ensures the rename scheduler can proceed without manual intervention.
+    try:
+        from app.curation.rename import INBOX_MOUNTS, _MAX_PATH_COMPONENT
+        fc_row2 = conn.execute(
+            "SELECT path, proposed_filename, mount FROM file_curation WHERE id = ?",
+            (file_curation_id,),
+        ).fetchone()
+        if fc_row2 and fc_row2[1] is None and fc_row2[2] in INBOX_MOUNTS:
+            import os as _os2
+            import re as _re2
+            orig_path = str(fc_row2[0])
+            ext = _os2.path.splitext(orig_path)[1].lower() or '.mp4'
+            stem = _os2.path.splitext(_os2.path.basename(orig_path))[0]
+            safe_stem = _re2.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', stem).strip('._')
+            safe_stem = _re2.sub(r'_{2,}', '_', safe_stem)
+            # Query performer_names directly — don't rely on outer scope
+            _pnames = [
+                r[0] for r in conn.execute(
+                    """SELECT p.canonical_name FROM file_performer fp
+                         JOIN performer p ON p.id = fp.performer_id
+                        WHERE fp.file_curation_id = ? ORDER BY fp.position""",
+                    (file_curation_id,),
+                ).fetchall()
+            ]
+            performer_part = _pnames[0].replace(' ', '-') if _pnames else 'Unknown'
+            full = f"{performer_part}.{safe_stem}{ext}"
+            proposed_inbox = full if len(full) <= _MAX_PATH_COMPONENT else f"{performer_part}{ext}"
+            conn.execute(
+                """UPDATE file_curation SET proposed_filename = ?, status = 'approved'
+                    WHERE id = ? AND status NOT IN ('renamed', 'skipped')""",
+                (proposed_inbox, file_curation_id),
+            )
+            conn.commit()
+            log.info(
+                "accept_match: inbox fallback filename file_id=%s proposed=%r",
+                file_curation_id, proposed_inbox,
+            )
+    except Exception:
+        log.exception("accept_match: inbox fallback filename failed file_id=%s", file_curation_id)
+
     log.info("accept_match: match_id=%s file_id=%s performer_id=%s secondaries=%d",
              match_id, file_curation_id, performer_id, len(secondary_match_ids or []))
 
