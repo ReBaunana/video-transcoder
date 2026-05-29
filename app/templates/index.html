@@ -161,7 +161,7 @@
   }
 
   .card-lbl {
-    font-size: .67rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -406,7 +406,7 @@
   th {
     text-align: left;
     padding: .58rem 1rem;
-    font-size: .66rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -435,6 +435,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 500;
+    font-family: var(--font-mono);
   }
 
   .td-dim { color: var(--text-muted); }
@@ -445,7 +446,7 @@
   .pct-bigger { color: var(--red);   font-size: .7rem; font-weight: 700; }
 
   /* Badges (index-specific job-status variants) */
-  .badge { padding: .18rem .52rem; font-size: .67rem; }
+  .badge { padding: .18rem .52rem; font-size: .71rem; }
   .badge::before {
     content: '';
     display: inline-block;
@@ -517,7 +518,7 @@
     display: flex;
     align-items: center;
     gap: .28rem;
-    font-size: .67rem;
+    font-size: .71rem;
     font-family: inherit;
     line-height: 1;
     transition: color .15s, background .15s, border-color .15s;
@@ -553,7 +554,7 @@
   }
 
   .mount-stat {
-    font-size: .67rem;
+    font-size: .71rem;
     color: var(--text-muted);
     white-space: nowrap;
   }
@@ -644,7 +645,7 @@
   }
 
   .worker-label {
-    font-size: .67rem;
+    font-size: .71rem;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -713,7 +714,7 @@
     display: flex;
     align-items: center;
     gap: .45rem;
-    font-size: .67rem;
+    font-size: .71rem;
     font-weight: 600;
     letter-spacing: .07em;
     text-transform: uppercase;
@@ -816,7 +817,7 @@
     .tbl-wrap table th:nth-child(8), .tbl-wrap table td:nth-child(8) { display: none; }
 
     /* Version badge: smaller, tighter corner */
-    .version-badge { bottom: .5rem; right: .5rem; font-size: .62rem; padding: .18rem .45rem; }
+    .version-badge { bottom: .5rem; right: .5rem; font-size: .79rem; padding: .18rem .45rem; }
   }
 
   /* ─── Settings strip ────────────────────────────── */
@@ -840,7 +841,7 @@
   }
 
   .setting-label {
-    font-size: .67rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -879,7 +880,7 @@
   .setting-select option { background: #12122a; }
 
   .setting-hint {
-    font-size: .66rem;
+    font-size: .71rem;
     color: var(--text-dim);
   }
 
@@ -1100,7 +1101,7 @@
   }
 
   .modal-code {
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-family: var(--font-mono);
     font-size: .72rem;
     color: var(--cyan);
     background: var(--surface-3);
@@ -1137,7 +1138,7 @@
     gap: .25rem;
     padding: .16rem .48rem;
     border-radius: 99px;
-    font-size: .67rem;
+    font-size: .71rem;
     font-weight: 600;
     cursor: pointer;
     background: transparent;
@@ -1216,7 +1217,7 @@
     height: 1.15rem;
     padding: 0 .3rem;
     border-radius: 99px;
-    font-size: .65rem;
+    font-size: .71rem;
     font-weight: 700;
     background: color-mix(in srgb, var(--red) 18%, transparent);
     color: var(--red);
@@ -1228,7 +1229,7 @@
     align-items: center;
     gap: .5rem;
     padding: .45rem .1rem .25rem;
-    font-size: .7rem;
+    font-size: .79rem;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -1702,7 +1703,7 @@
     <!-- Left: codec chart + list -->
     <div class="panel">
       <div class="panel-header">
-        <span class="panel-title">Codec Distribution</span>
+        <span class="section-title">Codec Distribution</span>
         {% if codec_stats %}
         <span class="tag">{{ codec_stats | length }} type{{ 's' if codec_stats | length != 1 else '' }}</span>
         {% endif %}
@@ -1735,7 +1736,7 @@
     <!-- Right: recent jobs -->
     <div class="panel">
       <div class="panel-header">
-        <span class="panel-title">Recent Jobs</span>
+        <span class="section-title">Recent Jobs</span>
         {% set done_n    = recent | selectattr('status','equalto','done')    | list | length %}
         {% set failed_n  = recent | selectattr('status','equalto','failed')  | list | length %}
         {% set running_n = recent | selectattr('status','equalto','running') | list | length %}

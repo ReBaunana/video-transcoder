@@ -32,7 +32,7 @@
   }
 
   .sidebar-title {
-    font-size: .66rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -81,7 +81,7 @@
   .mount-card.active .mount-name { color: var(--accent); }
 
   .mount-total {
-    font-size: .68rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
@@ -94,7 +94,7 @@
     margin-bottom: .3rem;
   }
   .mount-pct-label {
-    font-size: .64rem;
+    font-size: .71rem;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
@@ -121,7 +121,7 @@
   .mount-stats {
     display: flex;
     gap: .55rem;
-    font-size: .65rem;
+    font-size: .71rem;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
@@ -154,7 +154,7 @@
     pointer-events: none;
   }
   .stat-card-lbl {
-    font-size: .65rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -275,7 +275,7 @@
   #filesTable th {
     text-align: left;
     padding: .58rem .8rem;
-    font-size: .66rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
@@ -345,7 +345,7 @@
     line-height: 1.3;
   }
   .td-name-orig {
-    font-family: 'SF Mono', Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: .73rem;
     font-weight: 500;
     overflow: hidden;
@@ -354,7 +354,7 @@
     color: var(--text);
   }
   .td-name-proposed {
-    font-family: 'SF Mono', Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: .7rem;
     font-weight: 400;
     overflow: hidden;
@@ -370,7 +370,7 @@
   /* Status cell with inline confidence % */
   .status-conf { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
   .conf-inline {
-    font-size: .64rem;
+    font-size: .71rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
@@ -417,7 +417,7 @@
     background: var(--yellow-bg);
     border: 1px solid color-mix(in srgb, var(--yellow) 25%, transparent);
     border-radius: 99px;
-    font-size: .65rem;
+    font-size: .71rem;
     font-weight: 600;
     color: var(--yellow);
     text-decoration: none;
@@ -429,7 +429,7 @@
     display: inline-block;
     margin-left: .35rem;
     padding: 1px 6px;
-    font-size: .6rem;
+    font-size: .71rem;
     font-weight: 700;
     letter-spacing: .04em;
     color: var(--cyan, #67e8f9);
@@ -545,7 +545,7 @@
     padding: .4rem 0;
     border-bottom: 1px solid var(--border);
     font-size: .72rem;
-    font-family: 'SF Mono', Menlo, monospace;
+    font-family: var(--font-mono);
   }
   .rename-log-row:last-child { border: none; }
   .rename-log-row .arrow {
@@ -599,7 +599,7 @@
   .face-status-body { padding: .5rem .8rem .7rem; border-top: 1px solid var(--border); }
   .face-status-row { display: flex; align-items: center; gap: .6rem; font-size: .78rem; margin-bottom: .3rem; }
   .face-status-meta { color: var(--text-muted); font-size: .73rem; }
-  .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: monospace; min-width: 0; }
+  .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: var(--font-mono); min-width: 0; }
   .face-status-file > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .face-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
   .face-status-dot.running { background: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 20%, transparent); animation: pulse 1.5s infinite; }
@@ -716,14 +716,14 @@
       white-space: normal;
     }
     #filesTable .td-name .td-name-proposed {
-      font-size: .67rem;
+      font-size: .71rem;
       overflow-wrap: anywhere;
       white-space: normal;
     }
 
     #filesTable .td-performers {
       grid-area: perf;
-      font-size: .65rem;
+      font-size: .71rem;
       align-self: center;
       white-space: normal;
       overflow-wrap: anywhere;
@@ -947,7 +947,7 @@
         <!-- File table -->
         <div class="panel tbl-panel">
           <div class="panel-header">
-            <div class="panel-title">Files — {{ selected_mount }}</div>
+            <div class="section-title">Files — {{ selected_mount }}</div>
             <div class="panel-title" style="text-transform:none;letter-spacing:0;font-weight:500">
               {{ total_files }} total
             </div>

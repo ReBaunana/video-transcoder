@@ -38,6 +38,7 @@
       --radius-sm:        .45rem;
       --bg-translucent:   rgba(8,8,16,.88);
       --bg-translucent-2: rgba(8,8,16,.92);
+      --font-mono:        ui-monospace, 'SF Mono', Menlo, monospace;
     }
 
     @media (prefers-color-scheme: light) {
@@ -136,10 +137,12 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: ui-sans-serif, -apple-system, 'Helvetica Neue', system-ui, sans-serif;
-      font-size: 13.5px;
+      font-family: system-ui, ui-sans-serif, -apple-system, 'Helvetica Neue', sans-serif;
+      font-size: 14px;
       line-height: 1.55;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -297,6 +300,13 @@
       text-transform: uppercase;
       letter-spacing: .08em;
     }
+    .section-title {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: normal;
+      text-transform: none;
+    }
 
     /* ─── Badges (shared base) ──────────────────────── */
     .badge {
@@ -305,7 +315,7 @@
       gap: .28rem;
       padding: .18rem .55rem;
       border-radius: 99px;
-      font-size: .65rem;
+      font-size: .71rem;
       font-weight: 600;
       letter-spacing: .03em;
       text-transform: uppercase;
@@ -362,7 +372,7 @@
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: 99px;
-      font-size: .68rem;
+      font-size: .79rem;
       font-weight: 600;
       color: var(--text-muted);
       text-decoration: none;
@@ -388,7 +398,7 @@
     .sys-item { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
     .sys-lbl {
       color: var(--text-muted);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .06em;
