@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Video Transcoder{% endblock %}</title>
   
-  <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+  <script>(function(){var t=localStorage.getItem('vt-theme');if(t)document.documentElement.setAttribute('data-theme',t);}());</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -511,6 +511,221 @@
       }
     }
   </style>
+  /* ─── Shared button variants used by global modals ─── */
+  .btn-ghost {
+    background: var(--surface-3);
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+  .btn-ghost:hover {
+    border-color: var(--border-hover);
+    color: var(--text);
+  }
+  .btn-backup {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
+  .btn-backup:hover {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  /* Select / input used in backup modal — reuse setting-select/setting-input styles */
+  .setting-select {
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: .82rem;
+    font-weight: 500;
+    padding: .28rem .55rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .setting-select:focus { border-color: var(--accent); }
+  .setting-input {
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+    padding: .28rem .55rem;
+    width: 72px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .setting-input:focus { border-color: var(--accent); }
+
+  /* ─── Global header controls (all pages) ───────────── */
+  .global-controls {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    flex-shrink: 0;
+  }
+
+  /* Shared icon-button style for theme, help, settings gear */
+  .hdr-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0;
+    transition: color .15s ease, background-color .15s ease,
+                border-color .15s ease, transform .12s ease;
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .hdr-icon-btn:hover {
+    border-color: var(--border-hover);
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  .hdr-icon-btn:active { transform: scale(.94); }
+  /* Focus ring — keyboard users */
+  .hdr-icon-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* Hit-area guard: ensure 44×44 touch target via padding on smaller viewports */
+  @media (max-width: 640px) {
+    .hdr-icon-btn { width: 34px; height: 34px; }
+  }
+
+  /* Separator between page-specific actions and global controls */
+  .hdr-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 .15rem;
+  }
+
+  /* ─── Base modal styles (shared across all pages) ─── */
+  .base-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .base-modal-backdrop.open { display: flex; }
+
+  .base-modal {
+    background: var(--surface-2);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius);
+    box-shadow: 0 24px 64px rgba(0,0,0,.65);
+    animation: fade-up .18s ease both;
+  }
+
+  .base-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .9rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .base-modal-title {
+    font-size: .67rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .base-modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    padding: 0;
+    transition: color .15s, background .15s;
+  }
+  .base-modal-close:hover { color: var(--text); background: var(--surface-3); }
+  .base-modal-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .base-modal-body {
+    padding: 1.1rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: .85rem;
+  }
+
+  .base-modal-code {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    color: var(--cyan);
+    background: var(--surface-3);
+    padding: .18rem .5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--cyan) 12%, transparent);
+  }
+
+  .base-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .5rem;
+    padding-top: .4rem;
+    border-top: 1px solid var(--border);
+    margin-top: .1rem;
+  }
+
+  .base-modal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+  }
+
+  .base-modal-label {
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .base-modal-value {
+    font-size: .78rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* base-modal uses same .btn / .btn-ghost / .btn-backup as rest of the app */
+
+  /* ─── Transitions for base-modal surfaces ──────── */
+  .base-modal {
+    transition: background-color .22s ease, border-color .18s ease, box-shadow .2s ease;
+  }
+
   {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -538,6 +753,62 @@
   </div>
   <div class="header-actions">
     {% block header_actions %}{% endblock %}
+    <!-- ── Global controls: always present on every tab ── -->
+    <span class="hdr-sep" aria-hidden="true"></span>
+    <div class="global-controls" role="group" aria-label="Global settings">
+
+      <!-- Theme toggle: cycles dark → light → auto -->
+      <button class="hdr-icon-btn" id="globalThemeBtn"
+              onclick="globalToggleTheme()"
+              aria-label="Toggle theme"
+              title="Toggle theme">
+        <svg id="globalThemeIcon" width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- filled by JS on load -->
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+
+      <!-- Help / About button -->
+      <button class="hdr-icon-btn" id="globalHelpBtn"
+              onclick="globalOpenHelp()"
+              aria-label="Help and About"
+              aria-haspopup="dialog"
+              title="Help &amp; About">
+        <svg width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+
+      <!-- Backup Settings button (direct — single item, no dropdown needed) -->
+      <button class="hdr-icon-btn" id="globalBackupBtn"
+              onclick="globalOpenBackup()"
+              aria-label="Backup Settings"
+              aria-haspopup="dialog"
+              title="Backup Settings">
+        <svg width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+
+    </div><!-- /.global-controls -->
   </div>
 </header>
 <!-- ═══ SYS BAR (sticky, all tabs) ═════════════════════════ -->
@@ -588,6 +859,322 @@
 {% block content %}{% endblock %}
 
 {% block body_end %}{% endblock %}
+
+<!-- ═══════════════════════════════════════════════════════════
+     GLOBAL MODALS — Help/About and Backup Settings
+     These live in base.html so they are available on every tab.
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- Help / About modal -->
+<div id="globalHelpModal" class="base-modal-backdrop"
+     role="dialog" aria-modal="true" aria-labelledby="globalHelpTitle"
+     onclick="if(event.target===this)globalCloseHelp()">
+  <div class="base-modal" style="width:min(560px,94vw)">
+    <div class="base-modal-header">
+      <span class="base-modal-title" id="globalHelpTitle">Help &amp; Settings Guide</span>
+      <button class="base-modal-close" onclick="globalCloseHelp()" aria-label="Close">&times;</button>
+    </div>
+    <div class="base-modal-body" style="gap:1.1rem;max-height:72vh;overflow-y:auto;">
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">What this does</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Scans all folders under <code class="base-modal-code">/media</code>, finds video files not yet in H.265, and re-encodes them using your NVIDIA GPU (NVENC). The original file is replaced in-place. Plex and Jellyfin don't need to rescan. Already-processed files are cached and skipped on future scans.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">CQ - Constant Quality</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Controls quality vs. file size. <strong style="color:var(--text)">Lower = better quality, larger file.</strong><br><br>
+          <span style="color:var(--red)">15-22</span> &nbsp;Near-lossless - file can be <em>bigger</em> than source<br>
+          <span style="color:var(--yellow)">23-25</span> &nbsp;High quality, 20-40% smaller<br>
+          <span style="color:var(--green)">26-28</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - good quality, 40-60% smaller<br>
+          <span style="color:var(--yellow)">29-32</span> &nbsp;Slight quality loss, 55-70% smaller<br>
+          <span style="color:var(--red)">33+&nbsp;&nbsp;</span> &nbsp;Noticeable artifacts on film content<br><br>
+          If you change CQ, files transcoded at a different CQ will be re-encoded on the next scan.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Preset</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Controls how hard the encoder searches for compression. Unlike software codecs, NVENC is fixed-function hardware. The quality difference between <code class="base-modal-code">fast</code> and <code class="base-modal-code">slow</code> is small.<br><br>
+          <span style="color:var(--green)">fast</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Best throughput, minimal quality difference - <strong style="color:var(--text)">recommended</strong><br>
+          <span style="color:var(--text-muted)">medium</span> &nbsp;5-10% smaller files, 2x slower<br>
+          <span style="color:var(--text-muted)">slow</span> &nbsp;&nbsp;&nbsp;&nbsp;Marginal gain, 3x slower - not worth it
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Parallel Jobs (Workers)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          How many files encode simultaneously. All streams share the single NVENC unit.<br><br>
+          <span style="color:var(--text-muted)">1-2x</span> &nbsp;NVENC underutilized<br>
+          <span style="color:var(--green)">3-4x</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - ~80% NVENC load<br>
+          <span style="color:var(--text-muted)">5-6x</span> &nbsp;Good I/O overlap, high throughput<br>
+          <span style="color:var(--red)">7-8x</span> &nbsp;VRAM pressure risk on 4 GB GPUs<br><br>
+          CPU stays at ~10-20% regardless. All work is done on the GPU.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Output Container</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The output container matches the source where possible. Plex and Jellyfin don't need to rescan because the file stays in the same folder with the same name.<br><br>
+          <code class="base-modal-code">.mp4 .m4v .mov</code> &rarr; <code class="base-modal-code">.mp4</code><br>
+          <code class="base-modal-code">.mkv</code> &rarr; <code class="base-modal-code">.mkv</code><br>
+          <code class="base-modal-code">.avi .wmv .flv .ts .mpg .mpeg .divx .webm</code> &rarr; <code class="base-modal-code">.mkv</code><br><br>
+          The codec is always <strong style="color:var(--text)">H.265 / HEVC</strong>. Audio and subtitle tracks are copied without re-encoding.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Reset DB vs Clean Jobs</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          <strong style="color:var(--text)">Clean Jobs</strong>: deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
+          <strong style="color:var(--text)">Reset DB</strong>: deletes job history <em>and</em> file cache. All files will be re-transcoded on the next scan as if they were never seen before.<br><br>
+          <span style="color:var(--green)">Settings (CQ, preset, workers) are never affected by either action.</span> They are stored separately in <code class="base-modal-code">/data/settings.json</code>.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Backup</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          Backs up the SQLite database (job history + file cache) to <code class="base-modal-code">/data/backups/</code>. Video files are not backed up.<br><br>
+          Configure interval and retention via the Backup Settings button (download icon) in the header.
+          Default: daily, keep last 7.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">System Resources Bar (ETH)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="base-modal-code">/proc/net/dev</code> via a read-only bind-mount. The container itself carries almost no traffic.<br><br>
+          Required in <code class="base-modal-code">docker-compose.yml</code>:<br>
+          <code class="base-modal-code">- /proc/1/net:/host/proc/net:ro</code><br>
+          <span style="color:var(--text-dim);font-size:.75rem;">Must be <code class="base-modal-code">/proc/1/net</code>, not <code class="base-modal-code">/proc/net</code>: the latter is a symlink that resolves to the container's own network namespace.</span>
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);"></div>
+
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Display Theme (Auto / Light / Dark)</div>
+        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
+          The theme button (sun/moon icon) in the header cycles through three modes:<br><br>
+          <span style="color:var(--text)">Auto</span> &nbsp;- follows your device's system setting. If your Mac or phone switches between Dark and Light mode automatically (e.g. sunrise/sunset schedule), the dashboard follows along in real time.<br><br>
+          <span style="color:var(--text)">Light</span> &nbsp;- forces light mode regardless of the system setting.<br><br>
+          <span style="color:var(--text)">Dark</span> &nbsp;- forces dark mode regardless of the system setting.<br><br>
+          The choice is saved in your browser. To reset to system-following behavior, click until the tooltip says "Auto".
+        </div>
+      </div>
+
+      <div class="base-modal-footer">
+        <button class="btn btn-ghost" onclick="globalCloseHelp()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Backup Settings modal (global) -->
+<div id="globalBackupModal" class="base-modal-backdrop"
+     role="dialog" aria-modal="true" aria-labelledby="globalBackupTitle"
+     onclick="if(event.target===this)globalCloseBackup()">
+  <div class="base-modal" style="width:min(440px,92vw)">
+    <div class="base-modal-header">
+      <span class="base-modal-title" id="globalBackupTitle">Backup Settings</span>
+      <button class="base-modal-close" onclick="globalCloseBackup()" aria-label="Close">&times;</button>
+    </div>
+    <div class="base-modal-body">
+      <div class="base-modal-row">
+        <span class="base-modal-label">Auto-backup interval</span>
+        <select id="gBmInterval" class="setting-select" onchange="globalSaveBackupSettings()">
+          <option value="0">Off</option>
+          <option value="6">Every 6 h</option>
+          <option value="12">Every 12 h</option>
+          <option value="24">Daily</option>
+          <option value="168">Weekly</option>
+        </select>
+      </div>
+      <div class="base-modal-row">
+        <span class="base-modal-label">Keep last N backups</span>
+        <input type="number" id="gBmKeep" class="setting-input"
+               value="7" min="1" max="30" style="width:56px"
+               onchange="globalSaveBackupSettings()">
+      </div>
+      <div class="base-modal-row">
+        <span class="base-modal-label">Backup location</span>
+        <code class="base-modal-code">/data/backups/</code>
+      </div>
+      <div class="base-modal-row">
+        <span class="base-modal-label">Last backup</span>
+        <span class="base-modal-value" id="gBmLastBackup">Loading...</span>
+      </div>
+      <div class="base-modal-footer">
+        <button class="btn btn-backup" onclick="globalDoBackup()">Backup Now</button>
+        <button class="btn btn-ghost" onclick="globalCloseBackup()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* ════════════════════════════════════════════════════════════
+     GLOBAL THEME LOGIC
+     Single authoritative copy — all pages use this.
+     The FOUC-guard inline script above already reads localStorage
+     before first paint; this block handles the UI + cycling.
+     ════════════════════════════════════════════════════════════ */
+  var _SVG_SUN     = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  var _SVG_MOON    = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  var _SVG_MONITOR = '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><polyline points="8 21 12 17 16 21"/>';
+
+  function _getThemeMode() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'light') return 'light';
+    if (t === 'dark')  return 'dark';
+    return 'auto';
+  }
+
+  function _isLight() {
+    var m = _getThemeMode();
+    if (m === 'light') return true;
+    if (m === 'dark')  return false;
+    return window.matchMedia('(prefers-color-scheme: light)').matches;
+  }
+
+  function _applyGlobalThemeIcon() {
+    var mode = _getThemeMode();
+    var icon = document.getElementById('globalThemeIcon');
+    var btn  = document.getElementById('globalThemeBtn');
+    /* icon shows CURRENT state; title hints at next action */
+    var icons  = { auto: _SVG_MONITOR, light: _SVG_SUN, dark: _SVG_MOON };
+    var titles = { auto: 'Theme: Auto (follows system) - click for Light', light: 'Theme: Light - click for Dark', dark: 'Theme: Dark - click for Auto' };
+    if (icon) icon.innerHTML  = icons[mode];
+    if (btn)  btn.title       = titles[mode];
+    /* aria-label always reflects current + intent */
+    if (btn)  btn.setAttribute('aria-label', titles[mode]);
+  }
+
+  window.globalToggleTheme = function () {
+    var mode = _getThemeMode();
+    if (mode === 'auto') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('vt-theme', 'light');
+    } else if (mode === 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('vt-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.removeItem('vt-theme');
+    }
+    _applyGlobalThemeIcon();
+    /* If index.html chart is present, sync it */
+    if (typeof updateChartTheme === 'function') updateChartTheme(_isLight());
+  };
+
+  /* Run on every page load */
+  _applyGlobalThemeIcon();
+
+  /* Sync icon when OS preference changes (auto mode only) */
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    if (_getThemeMode() === 'auto') _applyGlobalThemeIcon();
+  });
+
+  /* ════════════════════════════════════════════════════════════
+     GLOBAL HELP MODAL
+     ════════════════════════════════════════════════════════════ */
+  window.globalOpenHelp = function () {
+    var m = document.getElementById('globalHelpModal');
+    if (!m) return;
+    m.classList.add('open');
+    /* Move focus to close button for keyboard users */
+    var close = m.querySelector('.base-modal-close');
+    if (close) setTimeout(function () { close.focus(); }, 50);
+  };
+  window.globalCloseHelp = function () {
+    var m = document.getElementById('globalHelpModal');
+    if (m) m.classList.remove('open');
+    /* Return focus to trigger */
+    var btn = document.getElementById('globalHelpBtn');
+    if (btn) btn.focus();
+  };
+
+  /* ════════════════════════════════════════════════════════════
+     GLOBAL BACKUP MODAL
+     ════════════════════════════════════════════════════════════ */
+  window.globalOpenBackup = function () {
+    var m = document.getElementById('globalBackupModal');
+    if (!m) return;
+    /* Populate current values from API */
+    fetch('/api/status').then(function (r) { return r.json(); }).then(function (d) {
+      var cfg = d.config || {};
+      var ivEl = document.getElementById('gBmInterval');
+      var kpEl = document.getElementById('gBmKeep');
+      var lbEl = document.getElementById('gBmLastBackup');
+      if (ivEl) ivEl.value = cfg.backup_interval_h !== undefined ? cfg.backup_interval_h : 24;
+      if (kpEl) kpEl.value = cfg.backup_keep       !== undefined ? cfg.backup_keep       : 7;
+      if (lbEl) lbEl.textContent = cfg.last_backup || d.last_backup || 'Never';
+    }).catch(function () {});
+    m.classList.add('open');
+    var close = m.querySelector('.base-modal-close');
+    if (close) setTimeout(function () { close.focus(); }, 50);
+  };
+  window.globalCloseBackup = function () {
+    var m = document.getElementById('globalBackupModal');
+    if (m) m.classList.remove('open');
+    var btn = document.getElementById('globalBackupBtn');
+    if (btn) btn.focus();
+  };
+  window.globalSaveBackupSettings = function () {
+    var interval = parseInt(document.getElementById('gBmInterval').value);
+    var keep     = parseInt(document.getElementById('gBmKeep').value);
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup_interval_h: interval, backup_keep: keep }),
+    }).catch(function () {});
+  };
+  window.globalDoBackup = function () {
+    fetch('/api/backup', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var el = document.getElementById('gBmLastBackup');
+        if (d.ok && el) el.textContent = d.at || 'just now';
+        if (typeof showToast === 'function') showToast(d.ok ? 'Backup complete' : (d.error || 'Backup failed'), d.ok ? 'success' : 'error');
+      }).catch(function () {});
+  };
+
+  /* ════════════════════════════════════════════════════════════
+     GLOBAL KEYBOARD HANDLER
+     Escape closes both global modals (other modals handled per-page)
+     ════════════════════════════════════════════════════════════ */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var helpOpen   = document.getElementById('globalHelpModal')?.classList.contains('open');
+    var backupOpen = document.getElementById('globalBackupModal')?.classList.contains('open');
+    if (helpOpen)   { window.globalCloseHelp();   e.stopPropagation(); return; }
+    if (backupOpen) { window.globalCloseBackup(); e.stopPropagation(); return; }
+  });
+
+}());
+</script>
 
 <script>
 (function () {

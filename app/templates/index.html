@@ -1001,18 +1001,19 @@
     border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
-  /* ─── Advanced dropdown ─────────────────────────── */
+  /* ─── Kebab menu (Transcoder-specific actions only) ── */
   .adv-wrap { position: relative; }
   .btn-adv {
     background: var(--surface-2);
     border-color: var(--border);
     color: var(--text-muted);
-    padding: .38rem .6rem;
+    padding: .38rem .5rem;
   }
   .btn-adv:hover {
     border-color: var(--border-hover);
     color: var(--text);
   }
+  .btn-adv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .adv-menu {
     position: absolute;
     top: calc(100% + 6px);
@@ -1045,8 +1046,12 @@
     transition: background .1s, color .1s;
   }
   .adv-item:hover { background: var(--surface-3); color: var(--text); }
+  /* Focus visible for keyboard navigation inside the menu */
+  .adv-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--surface-3); color: var(--text); }
+  .adv-item:focus { outline: none; }
   .adv-item.danger { color: color-mix(in srgb, var(--red) 75%, transparent); }
-  .adv-item.danger:hover { background: var(--red-bg); color: var(--red); }
+  .adv-item.danger:hover,
+  .adv-item.danger:focus-visible { background: var(--red-bg); color: var(--red); }
   .adv-submenu { padding: .25rem .5rem .4rem 1.9rem; display:flex; flex-direction:column; gap:.35rem; }
   .adv-sub-opt { font-size:.8rem; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:.45rem; user-select:none; }
   .adv-sub-opt input { accent-color:var(--accent); cursor:pointer; }
@@ -1393,57 +1398,55 @@
     <span class="btn-label">Stop</span>
   </button>
   <div class="adv-wrap" id="advWrap">
-    <button class="btn btn-adv" onclick="toggleAdv()" title="Menu" aria-label="Menu">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-        <line x1="3" y1="6"  x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+    <!-- Kebab trigger: Transcoder-specific actions only -->
+    <button class="btn btn-adv" id="advTrigger"
+            onclick="toggleAdv()"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            title="More actions">
+      <!-- Vertical three-dot kebab -->
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="12" cy="5"  r="2"/>
+        <circle cx="12" cy="12" r="2"/>
+        <circle cx="12" cy="19" r="2"/>
       </svg>
     </button>
-    <div class="adv-menu">
-      <button class="adv-item" id="themeToggleBtn" onclick="toggleAdv(); toggleTheme()">
-        <svg id="themeIcon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
-        <span id="themeToggleLabel">Light Mode</span>
-      </button>
-      <div style="height:1px;background:var(--border);margin:.15rem 0;"></div>
-      <button class="adv-item" onclick="toggleAdv(); openScanModal()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <div class="adv-menu" id="advMenu" role="menu" aria-label="Transcoder actions">
+      <button class="adv-item" role="menuitem" tabindex="-1"
+              onclick="closeAdv(); openScanModal()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Scan Schedule
       </button>
-      <button class="adv-item" onclick="toggleAdv(); openBackupModal()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Backup Settings
-      </button>
-      <button class="adv-item" onclick="toggleAdv(); openHelpModal()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Help / About
-      </button>
-      <button class="adv-item" id="corruptMenuItem" onclick="toggleAdv(); openCorruptModal()" style="{{ 'display:none' if corrupt_count == 0 else '' }}">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <button class="adv-item" id="corruptMenuItem" role="menuitem" tabindex="-1"
+              onclick="closeAdv(); openCorruptModal()"
+              style="{{ 'display:none' if corrupt_count == 0 else '' }}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <span style="color:var(--red)">Corrupt Files</span>
         <span class="corrupt-badge" id="corruptBadge">{{ corrupt_count }}</span>
       </button>
-      <div style="height:1px;background:var(--border);margin:.15rem 0;"></div>
+      <div style="height:1px;background:var(--border);margin:.15rem 0;" role="separator"></div>
       <div class="adv-submenu-wrap" id="cleanJobsWrap">
-        <button class="adv-item" onclick="toggleCleanMenu()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        <button class="adv-item" role="menuitem" tabindex="-1" onclick="toggleCleanMenu()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
           Clean Jobs
-          <svg class="adv-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg class="adv-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div class="adv-submenu" id="cleanSubmenu" style="display:none">
+        <div class="adv-submenu" id="cleanSubmenu" style="display:none" role="group">
           <label class="adv-sub-opt"><input type="radio" name="cleanMode" value="all" checked> All Jobs</label>
           <label class="adv-sub-opt"><input type="radio" name="cleanMode" value="failed"> Failed Only</label>
           <button class="adv-sub-btn" onclick="execCleanJobs()">Start Clean</button>
         </div>
       </div>
-      <button class="adv-item" id="pruneCacheBtn" onclick="pruneStaleCache()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      <button class="adv-item" id="pruneCacheBtn" role="menuitem" tabindex="-1"
+              onclick="closeAdv(); pruneStaleCache()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         Prune Stale Cache
       </button>
-      <button class="adv-item danger" onclick="resetDB()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      <div style="height:1px;background:var(--border);margin:.15rem 0;" role="separator"></div>
+      <button class="adv-item danger" role="menuitem" tabindex="-1"
+              onclick="closeAdv(); resetDB()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         Reset DB
       </button>
     </div>
@@ -1824,132 +1827,6 @@
 {% endblock %}
 
 {% block body_end %}
-<!-- ═══ HELP MODAL ══════════════════════════════════════════ -->
-<div id="helpModal" class="modal-backdrop" onclick="if(event.target===this)closeHelpModal()">
-  <div class="modal" role="dialog" aria-modal="true" style="width:min(560px,94vw)">
-    <div class="modal-header">
-      <span class="panel-title">Help &amp; Settings Guide</span>
-      <button class="modal-close" onclick="closeHelpModal()" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body" style="gap:1.1rem;max-height:72vh;overflow-y:auto;">
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">What this does</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Scans all folders under <code class="modal-code">/media</code>, finds video files not yet in H.265, and re-encodes them using your NVIDIA GPU (NVENC). The original file is replaced in-place. Plex and Jellyfin don't need to rescan. Already-processed files are cached and skipped on future scans.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">CQ - Constant Quality</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Controls quality vs. file size. <strong style="color:var(--text)">Lower = better quality, larger file.</strong><br><br>
-          <span style="color:var(--red)">15–22</span> &nbsp;Near-lossless - file can be <em>bigger</em> than source<br>
-          <span style="color:var(--yellow)">23–25</span> &nbsp;High quality, 20–40% smaller<br>
-          <span style="color:var(--green)">26–28</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - good quality, 40–60% smaller<br>
-          <span style="color:var(--yellow)">29–32</span> &nbsp;Slight quality loss, 55–70% smaller<br>
-          <span style="color:var(--red)">33+&nbsp;&nbsp;</span> &nbsp;Noticeable artifacts on film content<br><br>
-          If you change CQ, files transcoded at a different CQ will be re-encoded on the next scan.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Preset</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Controls how hard the encoder searches for compression. Unlike software codecs, NVENC is fixed-function hardware. The quality difference between <code class="modal-code">fast</code> and <code class="modal-code">slow</code> is small.<br><br>
-          <span style="color:var(--green)">fast</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Best throughput, minimal quality difference - <strong style="color:var(--text)">recommended</strong><br>
-          <span style="color:var(--text-muted)">medium</span> &nbsp;5–10% smaller files, 2× slower<br>
-          <span style="color:var(--text-muted)">slow</span> &nbsp;&nbsp;&nbsp;&nbsp;Marginal gain, 3× slower - not worth it
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Parallel Jobs (Workers)</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          How many files encode simultaneously. All streams share the single NVENC unit.<br><br>
-          <span style="color:var(--text-muted)">1–2×</span> &nbsp;NVENC underutilized<br>
-          <span style="color:var(--green)">3–4×</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - ~80% NVENC load<br>
-          <span style="color:var(--text-muted)">5–6×</span> &nbsp;Good I/O overlap, high throughput<br>
-          <span style="color:var(--red)">7–8×</span> &nbsp;VRAM pressure risk on 4 GB GPUs<br><br>
-          CPU stays at ~10–20% regardless. All work is done on the GPU.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Output Container</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          The output container matches the source where possible. Plex and Jellyfin don't need to rescan because the file stays in the same folder with the same name.<br><br>
-          <code class="modal-code">.mp4 .m4v .mov</code> &rarr; <code class="modal-code">.mp4</code><br>
-          <code class="modal-code">.mkv</code> &rarr; <code class="modal-code">.mkv</code><br>
-          <code class="modal-code">.avi .wmv .flv .ts .mpg .mpeg .divx .webm</code> &rarr; <code class="modal-code">.mkv</code><br><br>
-          The codec is always <strong style="color:var(--text)">H.265 / HEVC</strong>. Audio and subtitle tracks are copied without re-encoding.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Reset DB vs Clean Jobs</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          <strong style="color:var(--text)">Clean Jobs</strong>: deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
-          <strong style="color:var(--text)">Reset DB</strong>: deletes job history <em>and</em> file cache. All files will be re-transcoded on the next scan as if they were never seen before.<br><br>
-          <span style="color:var(--green)">Settings (CQ, preset, workers) are never affected by either action.</span> They are stored separately in <code class="modal-code">/data/settings.json</code>.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Backup</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Backs up the SQLite database (job history + file cache) to <code class="modal-code">/data/backups/</code>. Video files are not backed up.<br><br>
-          Configure interval and retention via <strong style="color:var(--text)">☰ → Backup Settings</strong>. Default: daily, keep last 7.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">System Resources Bar (ETH)</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="modal-code">/proc/net/dev</code> via a read-only bind-mount. The container itself carries almost no traffic.<br><br>
-          Required in <code class="modal-code">docker-compose.yml</code>:<br>
-          <code class="modal-code">- /proc/1/net:/host/proc/net:ro</code><br>
-          <span style="color:var(--text-dim);font-size:.75rem;">Must be <code class="modal-code">/proc/1/net</code>, not <code class="modal-code">/proc/net</code>: the latter is a symlink that resolves to the container's own network namespace.</span><br><br>
-          Two env vars control which interface is shown:<br><br>
-          <code class="modal-code">NET_IFACE=eno1</code> &nbsp;- pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
-          <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;- path to read counters from. Only change this if you use a different mount point.
-        </div>
-      </div>
-
-      <div style="height:1px;background:var(--border);"></div>
-
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Display Theme (Auto / Light / Dark)</div>
-        <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          The theme button in <strong style="color:var(--text)">☰ → (first item)</strong> cycles through three modes:<br><br>
-          <span style="color:var(--text)">🖥 Auto</span> &nbsp;- follows your device's system setting. If your Mac or phone switches between Dark and Light mode automatically (e.g. sunrise/sunset schedule), the dashboard follows along in real time. No manual action needed.<br><br>
-          <span style="color:var(--text)">☀ Light</span> &nbsp;- forces light mode regardless of the system setting.<br><br>
-          <span style="color:var(--text)">☾ Dark</span> &nbsp;- forces dark mode regardless of the system setting.<br><br>
-          The choice is saved in your browser. To reset to system-following behavior, click until you see <strong style="color:var(--text)">Auto</strong>.
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeHelpModal()">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ═══ CORRUPT FILES MODAL ═════════════════════════════════ -->
 <div id="corruptModal" class="modal-backdrop" onclick="if(event.target===this)closeCorruptModal()">
   <div class="modal" role="dialog" aria-modal="true" style="width:min(580px,94vw)">
@@ -2020,45 +1897,6 @@
   </div>
 </div>
 
-<!-- ═══ BACKUP MODAL ════════════════════════════════════════ -->
-<div id="backupModal" class="modal-backdrop" onclick="if(event.target===this)closeBackupModal()">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="backupModalTitle">
-    <div class="modal-header">
-      <span class="panel-title" id="backupModalTitle">Backup Settings</span>
-      <button class="modal-close" onclick="closeBackupModal()" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-row">
-        <span class="modal-label">Auto-backup interval</span>
-        <select id="bmInterval" class="setting-select" onchange="saveBackupSettings()">
-          <option value="0"   {{ 'selected' if backup_interval_h == 0   else '' }}>Off</option>
-          <option value="6"   {{ 'selected' if backup_interval_h == 6   else '' }}>Every 6 h</option>
-          <option value="12"  {{ 'selected' if backup_interval_h == 12  else '' }}>Every 12 h</option>
-          <option value="24"  {{ 'selected' if backup_interval_h == 24  else '' }}>Daily</option>
-          <option value="168" {{ 'selected' if backup_interval_h == 168 else '' }}>Weekly</option>
-        </select>
-      </div>
-      <div class="modal-row">
-        <span class="modal-label">Keep last N backups</span>
-        <input type="number" id="bmKeep" class="setting-input" value="{{ backup_keep }}"
-               min="1" max="30" style="width:56px" onchange="saveBackupSettings()">
-      </div>
-      <div class="modal-row">
-        <span class="modal-label">Backup location</span>
-        <code class="modal-code">/data/backups/</code>
-      </div>
-      <div class="modal-row">
-        <span class="modal-label">Last backup</span>
-        <span class="modal-value" id="bmLastBackup">{{ last_backup or 'Never' }}</span>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-backup" onclick="doBackupModal()">Backup Now</button>
-        <button class="btn btn-ghost" onclick="closeBackupModal()">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ═══ TOAST CONTAINER ═════════════════════════════════════ -->
 <div id="toastContainer"></div>
 
@@ -2071,20 +1909,103 @@
 </a>
 
 <script>
-  /* ── Hamburger menu ───────────────────────────────────────── */
-  function toggleAdv() {
-    document.getElementById('advWrap').classList.toggle('open');
+  /* ── Kebab menu — full ARIA keyboard model ─────────────────── */
+  function _advMenuItems() {
+    return Array.from(
+      document.querySelectorAll('#advMenu [role="menuitem"]:not([style*="display:none"])')
+    );
   }
+
+  function openAdv() {
+    const wrap    = document.getElementById('advWrap');
+    const trigger = document.getElementById('advTrigger');
+    if (!wrap) return;
+    wrap.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    // Move focus to first visible menuitem
+    const items = _advMenuItems();
+    if (items.length) {
+      items.forEach(i => i.setAttribute('tabindex', '-1'));
+      items[0].setAttribute('tabindex', '0');
+      items[0].focus();
+    }
+  }
+
+  function closeAdv() {
+    const wrap    = document.getElementById('advWrap');
+    const trigger = document.getElementById('advTrigger');
+    if (!wrap) return;
+    wrap.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    // Reset all tabindices
+    _advMenuItems().forEach(i => i.setAttribute('tabindex', '-1'));
+    trigger.focus();
+  }
+
+  function toggleAdv() {
+    const open = document.getElementById('advWrap')?.classList.contains('open');
+    open ? closeAdv() : openAdv();
+  }
+
+  // Click outside → close
   document.addEventListener('click', e => {
     const w = document.getElementById('advWrap');
-    if (w && !w.contains(e.target)) w.classList.remove('open');
+    if (w && w.classList.contains('open') && !w.contains(e.target)) closeAdv();
   });
 
-  /* ── Modal helpers ────────────────────────────────────────── */
-  function openBackupModal()  { document.getElementById('backupModal').classList.add('open'); }
-  function closeBackupModal() { document.getElementById('backupModal').classList.remove('open'); }
-  function openHelpModal()    { document.getElementById('helpModal').classList.add('open'); }
-  function closeHelpModal()   { document.getElementById('helpModal').classList.remove('open'); }
+  // Keyboard navigation inside the menu
+  document.addEventListener('keydown', e => {
+    const wrap = document.getElementById('advWrap');
+    if (!wrap || !wrap.classList.contains('open')) return;
+
+    const items = _advMenuItems();
+    const focused = document.activeElement;
+    const idx = items.indexOf(focused);
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeAdv();
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      closeAdv();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = idx < items.length - 1 ? items[idx + 1] : items[0];
+      items.forEach(i => i.setAttribute('tabindex', '-1'));
+      next.setAttribute('tabindex', '0');
+      next.focus();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = idx > 0 ? items[idx - 1] : items[items.length - 1];
+      items.forEach(i => i.setAttribute('tabindex', '-1'));
+      prev.setAttribute('tabindex', '0');
+      prev.focus();
+      return;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      items.forEach(i => i.setAttribute('tabindex', '-1'));
+      items[0].setAttribute('tabindex', '0');
+      items[0].focus();
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      const last = items[items.length - 1];
+      items.forEach(i => i.setAttribute('tabindex', '-1'));
+      last.setAttribute('tabindex', '0');
+      last.focus();
+      return;
+    }
+  });
+
+  /* ── Modal helpers (index-page modals only) ──────────────────── */
   function openScanModal()    { document.getElementById('scanModal').classList.add('open'); }
   function closeScanModal()   { document.getElementById('scanModal').classList.remove('open'); }
 
@@ -2217,9 +2138,16 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeBackupModal(); closeHelpModal(); closeScanModal(); closeCorruptModal(); _confirmResolve(false);
-    }
+    if (e.key !== 'Escape') return;
+    // Only handle index-page modals here; global modals (help, backup) are handled in base.html
+    const scanOpen    = document.getElementById('scanModal')?.classList.contains('open');
+    const corruptOpen = document.getElementById('corruptModal')?.classList.contains('open');
+    const confirmOpen = document.getElementById('confirmModal')?.classList.contains('open');
+    const killOpen    = document.getElementById('killModalOverlay')?.classList.contains('open');
+    if (scanOpen)    { closeScanModal();       return; }
+    if (corruptOpen) { closeCorruptModal();    return; }
+    if (confirmOpen) { _confirmResolve(false); return; }
+    if (killOpen)    { closeKillModal();       return; }
   });
 
   /* ── Custom confirm modal (replaces window.confirm) ──────── */
@@ -2238,18 +2166,6 @@
     return new Promise(resolve => { _confirmResolveRef = resolve; });
   }
 
-  async function saveBackupSettings() {
-    const interval = parseInt(document.getElementById('bmInterval').value);
-    const keep     = parseInt(document.getElementById('bmKeep').value);
-    try {
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backup_interval_h: interval, backup_keep: keep }),
-      });
-    } catch (_) {}
-  }
-
   async function saveScanSettings() {
     const hour = parseInt(document.getElementById('smHour').value);
     try {
@@ -2260,19 +2176,6 @@
       });
       // Reload so the status pill next-scan time updates
       window.location.href = '/?_=' + Date.now();
-    } catch (_) {}
-  }
-
-  async function doBackupModal() {
-    try {
-      const r = await fetch('/api/backup', { method: 'POST' });
-      const d = await r.json();
-      if (d.ok) {
-        const el = document.getElementById('bmLastBackup');
-        if (el) el.textContent = d.at || 'just now';
-        const hint = document.getElementById('lastBackup');
-        if (hint) hint.textContent = d.at || 'just now';
-      }
     } catch (_) {}
   }
 
@@ -2760,36 +2663,7 @@
 
   _applyMountFilter();
 
-  /* ── Theme toggle ────────────────────────────────────────── */
-  const _SVG_MOON    = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-  const _SVG_SUN     = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-  const _SVG_MONITOR = '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><polyline points="8 21 12 17 16 21"/>';
-
-  function _getThemeMode() {
-    const t = document.documentElement.getAttribute('data-theme');
-    if (t === 'light') return 'light';
-    if (t === 'dark')  return 'dark';
-    return 'auto';
-  }
-
-  function _isLight() {
-    const m = _getThemeMode();
-    if (m === 'light') return true;
-    if (m === 'dark')  return false;
-    return window.matchMedia('(prefers-color-scheme: light)').matches;
-  }
-
-  function _applyThemeLabel() {
-    const mode = _getThemeMode();
-    const lbl  = document.getElementById('themeToggleLabel');
-    const icon = document.getElementById('themeIcon');
-    // label shows the NEXT state (what you'll switch to)
-    const labels = { auto: 'Light Mode', light: 'Dark Mode', dark: 'Auto' };
-    const icons  = { auto: _SVG_SUN,     light: _SVG_MOON,  dark: _SVG_MONITOR };
-    if (lbl)  lbl.textContent  = labels[mode];
-    if (icon) icon.innerHTML   = icons[mode];
-  }
-
+  /* ── Chart theme sync (called by global toggleTheme in base.html) ── */
   function updateChartTheme(light) {
     const c = window._codecChart;
     if (!c) return;
@@ -2800,31 +2674,10 @@
     c.update();
   }
 
-  function toggleTheme() {
-    const mode = _getThemeMode();
-    if (mode === 'auto') {
-      document.documentElement.setAttribute('data-theme', 'light');
-      localStorage.setItem('vt-theme', 'light');
-    } else if (mode === 'light') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('vt-theme', 'dark');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.removeItem('vt-theme');
-    }
-    _applyThemeLabel();
-    updateChartTheme(_isLight());
-  }
-
-  // Set correct label + icon on page load
-  _applyThemeLabel();
-
-  // Sync when OS theme changes — only when in auto mode (no manual override)
+  // Keep chart in sync when OS theme changes (auto mode)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-    if (_getThemeMode() === 'auto') {
-      _applyThemeLabel();
-      updateChartTheme(_isLight());
-    }
+    const m = document.documentElement.getAttribute('data-theme');
+    if (!m) updateChartTheme(window.matchMedia('(prefers-color-scheme: light)').matches);
   });
 
   /* ── Chart.js doughnut ───────────────────────────────────── */
