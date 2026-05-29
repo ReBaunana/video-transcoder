@@ -301,3 +301,93 @@ def test_run_auto_match_returns_summary():
     assert result['phase2'] == 1   # Jane Doe extracted as new
     assert result['new_performers'] == 1
     assert result['new_performer_names'] == ['Jane Doe']
+
+
+# ---------------------------------------------------------------------------
+# slugify
+# ---------------------------------------------------------------------------
+
+def test_slugify_spaces_to_dashes():
+    assert slugify("Freya Dee") == "freya-dee"
+
+def test_slugify_three_words():
+    assert slugify("Anna Bell Peaks") == "anna-bell-peaks"
+
+
+# ---------------------------------------------------------------------------
+# build_proposed_filename — collision resolution
+# ---------------------------------------------------------------------------
+
+def test_build_proposed_filename_no_collision():
+    conn = _make_db()
+    conn.execute("INSERT INTO file_curation (path, status) VALUES ('/media/x/scene.mp4','unknown')")
+    conn.commit()
+    result = build_proposed_filename(conn, 1, ["Jane Doe"], "/media/x/scene.mp4")
+    assert result == "Jane-Doe.scene.mp4"
+
+def test_build_proposed_filename_collision_appends_suffix():
+    conn = _make_db()
+    # fc_id=1: the file we're building a name for
+    conn.execute("INSERT INTO file_curation (path, status, proposed_filename) VALUES ('/media/x/scene.mp4','unknown',NULL)")
+    # fc_id=2: already holds the name we'd generate
+    conn.execute("INSERT INTO file_curation (path, status, proposed_filename) VALUES ('/media/x/other.mp4','approved','Jane-Doe.scene.mp4')")
+    conn.commit()
+    result = build_proposed_filename(conn, 1, ["Jane Doe"], "/media/x/scene.mp4")
+    assert result == "Jane-Doe.scene_2.mp4"
+
+
+# ---------------------------------------------------------------------------
+# Regression: single-token performers skipped in phase1 (Bug #5)
+# ---------------------------------------------------------------------------
+
+def test_phase1_skips_single_token_performer():
+    """Single-token performers (Uma, Chloe) caused false positives — must be skipped."""
+    conn = _make_db()
+    conn.execute("INSERT INTO performer (canonical_name, slug) VALUES ('Uma','uma')")
+    conn.execute("INSERT INTO file_curation (path, mount, status) VALUES ('/media/jdownloader/uma scene.mp4','jdownloader','unknown')")
+    conn.commit()
+
+    n = phase1(conn)
+
+    assert n == 0  # single-token performer must never match
+    row = conn.execute("SELECT status FROM file_curation WHERE id=1").fetchone()
+    assert row['status'] == 'unknown'  # untouched
+
+
+# ---------------------------------------------------------------------------
+# Regression: QUALITY_RE does not strip non-codec rip-suffix words (Bug #1)
+# ---------------------------------------------------------------------------
+
+def test_normalize_stem_preserves_non_rip_suffix():
+    """The old [a-z]+rip pattern would strip performer/title fragments ending in 'rip'.
+    Only explicit prefixes (bdrip, webrip, etc.) must be removed."""
+    # "adrip" is not a quality marker — must survive normalization
+    result = normalize_stem("adrip gonzalez scene.mp4")
+    assert "adrip" in result
+
+
+# ---------------------------------------------------------------------------
+# Regression: MAX_COLLISIONS raises RuntimeError (Bug #7)
+# ---------------------------------------------------------------------------
+
+def test_build_proposed_filename_max_collisions_raises():
+    """After MAX_COLLISIONS attempts, RuntimeError must be raised — no infinite loop."""
+    from app.curation.auto_match import MAX_COLLISIONS
+    conn = _make_db()
+    # fc_id=1 is the file we're naming
+    conn.execute("INSERT INTO file_curation (path, status) VALUES ('/media/x/scene.mp4','unknown')")
+    # Seed fc_id=2..MAX_COLLISIONS+1 with all the names we'd try
+    base = "Jane-Doe.scene"
+    conn.execute(
+        "INSERT INTO file_curation (path, status, proposed_filename) VALUES (?,?,?)",
+        ('/media/x/x2.mp4', 'approved', f"{base}.mp4"),
+    )
+    for n in range(2, MAX_COLLISIONS + 1):
+        conn.execute(
+            "INSERT INTO file_curation (path, status, proposed_filename) VALUES (?,?,?)",
+            (f'/media/x/x{n+1}.mp4', 'approved', f"{base}_{n}.mp4"),
+        )
+    conn.commit()
+
+    with pytest.raises(RuntimeError, match="Could not find unique filename"):
+        build_proposed_filename(conn, 1, ["Jane Doe"], "/media/x/scene.mp4")
