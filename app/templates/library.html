@@ -791,7 +791,7 @@
     </svg>
     Detect Faces
   </button>
-  <button class="btn" id="tpdbBatchBtn" onclick="batchTpdb()" title="Lookup pending files on ThePornDB" style="display:none">
+  <button class="btn hidden" id="tpdbBatchBtn" onclick="batchTpdb()" title="Lookup pending files on ThePornDB">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v6M8 11h6"/>
     </svg>
@@ -918,11 +918,11 @@
             </label>
             <span class="face-status-chevron" aria-hidden="true">▼</span>
           </button>
-          <div class="face-status-body" hidden>
-            <div data-role="state-idle" hidden>
+          <div class="face-status-body hidden">
+            <div data-role="state-idle" class="hidden">
               <span data-role="idle-text"></span>
             </div>
-            <div data-role="state-running" hidden>
+            <div data-role="state-running" class="hidden">
               <div class="face-status-row">
                 <span class="face-status-dot running"></span>
                 <span data-role="running-label"></span>
@@ -934,7 +934,7 @@
                 <span data-role="failed"></span>
               </div>
             </div>
-            <div data-role="state-warning" hidden>
+            <div data-role="state-warning" class="hidden">
               <div class="face-status-row warning">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 <span>High failure rate (<span data-role="failure-rate"></span>%)</span>
@@ -998,7 +998,7 @@
                   <td class="td-actions">
                     <span class="actions-inner">
                       {% if f.status != 'renamed' %}
-                      <button class="btn btn-sm btn-tpdb tpdb-btn" onclick="lookupTpdb({{ f.id }})" title="Lookup on ThePornDB" style="display:none;padding:.28rem .4rem">
+                      <button class="btn btn-sm btn-tpdb tpdb-btn hidden" onclick="lookupTpdb({{ f.id }})" title="Lookup on ThePornDB" style="padding:.28rem .4rem">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                       </button>
                       {% endif %}
@@ -1289,10 +1289,9 @@
   }
 
   function _showTpdbControls(visible) {
-    const display = visible ? '' : 'none';
-    document.querySelectorAll('.tpdb-btn').forEach(b => { b.style.display = display; });
+    document.querySelectorAll('.tpdb-btn').forEach(b => { b.classList.toggle('hidden', !visible); });
     const batchBtn = document.getElementById('tpdbBatchBtn');
-    if (batchBtn) batchBtn.style.display = visible ? '' : 'none';
+    if (batchBtn) batchBtn.classList.toggle('hidden', !visible);
   }
 
   async function lookupTpdb(id) {
@@ -1380,7 +1379,7 @@
     panel.dataset.expanded = !expanded;
     panel.querySelector('.face-status-header').setAttribute('aria-expanded', !expanded);
     const body = panel.querySelector('.face-status-body');
-    body.hidden = expanded;
+    body.classList.toggle('hidden', expanded);
   }
 
   function setFaceWorkers(n) {
@@ -1422,16 +1421,16 @@
     if (isRunning && panel.dataset.expanded !== 'true') {
       panel.dataset.expanded = 'true';
       panel.querySelector('.face-status-header').setAttribute('aria-expanded', 'true');
-      panel.querySelector('.face-status-body').hidden = false;
+      panel.querySelector('.face-status-body').classList.remove('hidden');
     }
 
     // Show correct state div
     const stateIdle = panel.querySelector('[data-role="state-idle"]');
     const stateRunning = panel.querySelector('[data-role="state-running"]');
     const stateWarning = panel.querySelector('[data-role="state-warning"]');
-    stateIdle.hidden = isRunning || isWarning;
-    stateRunning.hidden = !isRunning;
-    stateWarning.hidden = !isWarning;
+    stateIdle.classList.toggle('hidden', isRunning || isWarning);
+    stateRunning.classList.toggle('hidden', !isRunning);
+    stateWarning.classList.toggle('hidden', !isWarning);
 
     if (isRunning) {
       const types = [...new Set(s.running_jobs.map(j => j.job_type))].join(', ');

@@ -546,8 +546,8 @@
     <div class="sys-track"><div class="sys-fill" id="gpuFill"></div></div>
     <span class="sys-pct" id="gpuPct">—</span>
   </div>
-  <div class="sys-sep" id="intelSep" style="display:none"></div>
-  <div class="sys-item" id="intelItem" style="display:none">
+  <div class="sys-sep hidden" id="intelSep"></div>
+  <div class="sys-item hidden" id="intelItem">
     <span class="sys-lbl">Intel</span>
     <div class="sys-track"><div class="sys-fill sys-fill-cyan" id="intelFill"></div></div>
     <span class="sys-pct" id="intelPct">—</span>
@@ -655,8 +655,8 @@
       const intelSep   = document.getElementById('intelSep');
       if (intelItem && intelSep) {
         const show = intelVideo >= 0;
-        intelItem.style.display = show ? '' : 'none';
-        intelSep.style.display  = show ? '' : 'none';
+        intelItem.classList.toggle('hidden', !show);
+        intelSep.classList.toggle('hidden', !show);
         if (show) {
           document.getElementById('intelFill').style.width = intelVideo + '%';
           document.getElementById('intelPct').textContent  = Math.round(intelVideo) + '%';

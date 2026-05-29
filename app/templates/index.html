@@ -1923,7 +1923,7 @@
           The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="modal-code">/proc/net/dev</code> via a read-only bind-mount. The container itself carries almost no traffic.<br><br>
           Required in <code class="modal-code">docker-compose.yml</code>:<br>
           <code class="modal-code">- /proc/1/net:/host/proc/net:ro</code><br>
-          <span style="color:var(--text-dim);font-size:.75rem;">⚠️ Must be <code class="modal-code">/proc/1/net</code>, not <code class="modal-code">/proc/net</code>: the latter is a symlink that resolves to the container's own network namespace.</span><br><br>
+          <span style="color:var(--text-dim);font-size:.75rem;">Must be <code class="modal-code">/proc/1/net</code>, not <code class="modal-code">/proc/net</code>: the latter is a symlink that resolves to the container's own network namespace.</span><br><br>
           Two env vars control which interface is shown:<br><br>
           <code class="modal-code">NET_IFACE=eno1</code> &nbsp;- pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
           <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;- path to read counters from. Only change this if you use a different mount point.
@@ -2301,7 +2301,7 @@
   function filterJobs(btn, status) {
     _activeJobFilter = status;
     document.querySelectorAll('#jobsBody tr[data-status]').forEach(r => {
-      r.style.display = (status === 'all' || r.dataset.status === status) ? '' : 'none';
+      r.classList.toggle('hidden', status !== 'all' && r.dataset.status !== status);
     });
     document.querySelectorAll('.filter-pill').forEach(b => {
       b.classList.remove('fp-active', 'fp-done', 'fp-failed');
@@ -2512,8 +2512,8 @@
     const elapsed  = j.elapsed_s ? Math.round(j.elapsed_s) + ' s' : '—';
     const errAttr  = j.error ? ` title="${_esc(j.error)}"` : '';
     const mHidden  = _hiddenMounts.has(j.mount || '') ? ' mount-hidden' : '';
-    const fHidden  = (_activeJobFilter !== 'all' && j.status !== _activeJobFilter) ? ' style="display:none"' : '';
-    return `<tr data-status="${j.status}" data-mount="${_esc(j.mount)}" class="${mHidden}"${fHidden}>` +
+    const fHidden  = (_activeJobFilter !== 'all' && j.status !== _activeJobFilter) ? ' hidden' : '';
+    return `<tr data-status="${j.status}" data-mount="${_esc(j.mount)}" class="${mHidden}${fHidden}">` +
       `<td class="td-file">${_esc(fname)}</td>` +
       `<td class="td-dim">${_esc(j.mount) || '—'}</td>` +
       `<td class="td-dim">${_esc(j.src_codec) || '—'}</td>` +
