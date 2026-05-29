@@ -377,23 +377,6 @@
   }
   @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-  /* ── Toast ────────────────────────────────────── */
-  .toast {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: .55rem 1rem;
-    font-size: .75rem;
-    font-weight: 500;
-    color: var(--text);
-    pointer-events: auto;
-    animation: fade-up .2s ease;
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-  }
-  .toast.ok { border-color: color-mix(in srgb, var(--green) 30%, transparent); color: var(--green); }
-  .toast.err { border-color: color-mix(in srgb, var(--red) 30%, transparent); color: var(--red); }
 </style>
 {% endblock %}
 
@@ -717,15 +700,8 @@
     }
   });
 
-  // ── toast ──────────────────────────────────────────────────────────────
-  function toast(msg, type) {
-    const c = document.getElementById('toastContainer');
-    const t = document.createElement('div');
-    t.className = 'toast ' + (type || '');
-    t.textContent = msg;
-    c.appendChild(t);
-    setTimeout(() => t.remove(), 2800);
-  }
+  // ── toast shim — delegates to shared showToast in base.html ──────────
+  const toast = (msg, ok) => showToast(msg, ok === 'ok' ? 'success' : ok === 'err' ? 'error' : ok);
 
   function esc(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

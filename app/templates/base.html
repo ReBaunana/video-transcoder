@@ -311,17 +311,45 @@
       text-transform: uppercase;
     }
 
-    /* ─── Toast container (shared baseline) ────────── */
+    /* ─── Toast (shared — bottom-left slide-in) ──────── */
     #toastContainer {
       position: fixed;
-      bottom: 1.2rem;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 200;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      z-index: 600;
       display: flex;
-      flex-direction: column;
+      flex-direction: column-reverse;
       gap: .45rem;
       pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      min-width: 240px;
+      max-width: 360px;
+      padding: .65rem 1rem;
+      background: var(--surface-3);
+      border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent);
+      border-left: 3px solid var(--yellow);
+      border-radius: var(--radius-sm);
+      font-size: .79rem;
+      line-height: 1.45;
+      color: var(--text);
+      box-shadow: 0 4px 24px rgba(0,0,0,.55);
+      pointer-events: auto;
+      animation: toast-in .22s ease-out both;
+    }
+    .toast.t-success { border-color: color-mix(in srgb, var(--green) 30%, transparent); border-left-color: var(--green); }
+    .toast.t-error   { border-color: color-mix(in srgb, var(--red) 30%, transparent);   border-left-color: var(--red); }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(-110%); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateX(0); }
+      to   { opacity: 0; transform: translateX(-110%); }
     }
 
     /* ─── Version badge ─────────────────────────────── */
@@ -549,6 +577,20 @@
   }
   _updateReviewBadge();
   setInterval(_updateReviewBadge, 30000);
+
+  /* ── Shared toast ──────────────────────────────────────────────── */
+  window.showToast = function(msg, type) {
+    const c = document.getElementById('toastContainer');
+    if (!c) return;
+    const el = document.createElement('div');
+    el.className = 'toast' + (type === 'success' ? ' t-success' : type === 'error' ? ' t-error' : '');
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => {
+      el.style.animation = 'toast-out .18s ease-in forwards';
+      setTimeout(() => el.remove(), 180);
+    }, 4000);
+  };
 
   setInterval(async () => {
     try {

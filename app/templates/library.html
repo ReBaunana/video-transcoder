@@ -570,25 +570,6 @@
     margin-bottom: .3rem;
   }
 
-  /* ─── Toast (library variant) ──────────────────── */
-  .toast {
-    padding: .6rem 1rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: .75rem;
-    color: var(--text);
-    box-shadow: 0 8px 28px rgba(0,0,0,.5);
-    pointer-events: auto;
-    animation: toast-in .25s ease;
-  }
-  .toast.ok  { border-color: color-mix(in srgb, var(--green) 40%, transparent); color: var(--green); }
-  .toast.err { border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); }
-  @keyframes toast-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
   .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
 
   /* Face status panel */
@@ -1132,14 +1113,8 @@
 </a>
 
 <script>
-  /* ── Toast ─────────────────────────────────────────────── */
-  function toast(msg, type) {
-    const el = document.createElement('div');
-    el.className = 'toast ' + (type || '');
-    el.textContent = msg;
-    document.getElementById('toastContainer').appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 2600);
-  }
+  /* ── Toast shim — delegates to shared showToast in base.html ── */
+  const toast = (msg, ok) => showToast(msg, ok === 'ok' ? 'success' : ok === 'err' ? 'error' : ok);
 
   async function apiPost(url, body) {
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
