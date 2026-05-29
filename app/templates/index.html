@@ -152,6 +152,7 @@
     letter-spacing: -.04em;
     line-height: 1;
     margin-bottom: .25rem;
+    font-variant-numeric: tabular-nums;
   }
   .card-val small {
     font-size: .9rem;
@@ -360,14 +361,45 @@
   }
 
   /* ─── Jobs table ─────────────────────────────── */
+  /* Parent panel carries the right-edge fade overlay */
+  .panel { position: relative; }
+  .panel::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 40px;
+    background: linear-gradient(to right, transparent, rgba(8,8,16,.65));
+    pointer-events: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    opacity: 0;
+    transition: opacity .2s;
+    z-index: 3;
+  }
+  [data-theme="light"] .panel::after {
+    background: linear-gradient(to right, transparent, rgba(240,241,248,.75));
+  }
+  .panel.has-overflow::after { opacity: 1; }
+
   .tbl-wrap {
     overflow-x: auto;
-    max-height: 500px;
     overflow-y: auto;
+    max-height: 500px;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hover) transparent;
   }
+  .tbl-wrap::-webkit-scrollbar { width: 7px; height: 7px; }
+  .tbl-wrap::-webkit-scrollbar-track { background: transparent; }
+  .tbl-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-hover);
+    border-radius: 99px;
+  }
+  .tbl-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
   table {
     width: 100%;
+    min-width: 800px;
     border-collapse: collapse;
     font-size: .77rem;
   }
@@ -1802,7 +1834,7 @@
               <td><span class="badge badge-{{ job.status }}"{% if job.error %} title="{{ job.error }}"{% endif %}>{{ job.status }}</span></td>
             </tr>
             {% else %}
-            <tr class="empty-row"><td colspan="8">No jobs recorded yet</td></tr>
+            <tr class="empty-row"><td colspan="9">No jobs recorded yet</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -2529,6 +2561,21 @@
       `<td><span class="badge badge-${j.status}"${errAttr}>${j.status}</span></td>` +
       `</tr>`;
   }
+
+  /* ── Jobs table overflow hint (right-edge fade) ──────────────────── */
+  (function() {
+    const wrap  = document.querySelector('.tbl-wrap');
+    const panel = wrap ? wrap.closest('.panel') : null;
+    if (!wrap || !panel) return;
+    function _checkOverflow() {
+      const hasMore = wrap.scrollWidth > wrap.clientWidth
+        && wrap.scrollLeft < wrap.scrollWidth - wrap.clientWidth - 2;
+      panel.classList.toggle('has-overflow', hasMore);
+    }
+    wrap.addEventListener('scroll', _checkOverflow, { passive: true });
+    window.addEventListener('resize', _checkOverflow);
+    setTimeout(_checkOverflow, 100);
+  })();
 
   function _refreshJobsTable(jobs) {
     const fp = (jobs.length ? jobs[0].id : 0) + ':' + jobs.length;
