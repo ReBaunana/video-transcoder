@@ -437,6 +437,25 @@
     }
     .sys-arrow { color: var(--text-muted); font-size: 11px; }
 
+    /* ─── Offline pill (sysBar right slot) ─────────────── */
+    #offlinePill {
+      display: none;
+      align-items: center;
+      gap: .38rem;
+      margin-left: auto;
+      padding: .18rem .58rem;
+      background: var(--red-bg);
+      border: 1px solid color-mix(in srgb, var(--red) 28%, transparent);
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: .04em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #offlinePill svg { flex-shrink: 0; }
+
     /* sysBar background inherits --bg-translucent-2 token — no per-theme overrides needed */
     @media (max-width: 640px) { #sysBar { flex-wrap: wrap; gap: 7px 14px; padding: 5px .9rem; } }
 
@@ -543,6 +562,14 @@
     <span class="sys-arrow">↑</span>
     <span class="sys-net-val" id="txVal">— MB/s</span>
   </div>
+  <!-- offline indicator — hidden until a poll fails -->
+  <div id="offlinePill" role="status" aria-live="polite">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    offline
+  </div>
 </div>
 {% block header_extra %}{% endblock %}
 </div><!-- /#topBar -->
@@ -602,9 +629,20 @@
     }, 4000);
   };
 
+  /* ── Offline / online indicator (global, used by all polled pages) ── */
+  window._markOffline = function() {
+    const pill = document.getElementById('offlinePill');
+    if (pill) pill.style.display = 'flex';
+  };
+  window._markOnline = function() {
+    const pill = document.getElementById('offlinePill');
+    if (pill) pill.style.display = 'none';
+  };
+
   setInterval(async () => {
     try {
       const d = await fetch('/api/sysinfo').then(r => r.json());
+      window._markOnline();
       _updateSysBar('cpuFill', 'cpuPct', d.cpu);
       _updateSysBar('memFill', 'memPct', d.mem);
       _updateSysBar('gpuFill', 'gpuPct', d.gpu);
@@ -624,7 +662,7 @@
       const tx = document.getElementById('txVal');
       if (rx) rx.textContent = _fmtMbps(d.rx_mbps);
       if (tx) tx.textContent = _fmtMbps(d.tx_mbps);
-    } catch(e) {}
+    } catch(e) { window._markOffline(); }
   }, 3000);
 })();
 </script>

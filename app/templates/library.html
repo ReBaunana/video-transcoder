@@ -1479,6 +1479,7 @@
       const statsPromise = fetch('/api/library-stats', { cache: 'no-store' })
         .then(r => r.json())
         .then(mounts => {
+          window._markOnline?.();
           mounts.forEach(m => {
             const total = m.total || 1;
             const pctR = (m.renamed  / total * 100);
@@ -1523,12 +1524,12 @@
             if (m && opt.value) opt.textContent = `${m.name} — ${m.renamed}/${m.total} renamed`;
           });
         })
-        .catch(() => {});
+        .catch(() => { window._markOffline?.(); });
 
       const facePromise = fetch('/api/face-status', { cache: 'no-store' })
         .then(r => r.json())
-        .then(s => renderFaceStatus(s))
-        .catch(() => 30000);
+        .then(s => { window._markOnline?.(); return renderFaceStatus(s); })
+        .catch(() => { window._markOffline?.(); return 30000; });
 
       syncFaceWorkersDropdown();
 

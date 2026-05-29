@@ -743,6 +743,33 @@
     color: var(--text-dim);
   }
 
+  /* ─── Skeleton / shimmer for first-paint loading ───────── */
+  @keyframes skeleton-shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+  }
+  .skeleton {
+    color: transparent !important;
+    background: linear-gradient(
+      90deg,
+      var(--surface-3) 25%,
+      color-mix(in srgb, var(--surface-3) 60%, var(--text-dim)) 50%,
+      var(--surface-3) 75%
+    );
+    background-size: 200% auto;
+    border-radius: var(--radius-sm);
+    animation: skeleton-shimmer 1.4s linear infinite;
+    /* make small spans visible as a block */
+    display: inline-block;
+    min-width: 2.5ch;
+  }
+  /* override any per-card colour so shimmer is always neutral */
+  .c-accent .card-val.skeleton,
+  .c-red    .card-val.skeleton,
+  .c-cyan   .card-val.skeleton,
+  .c-green  .card-val.skeleton,
+  .c-violet .card-val.skeleton { color: transparent !important; }
+
   /* ─── Responsive ─────────────────────────────── */
   @media (max-width: 960px) {
     .grid2 { grid-template-columns: 1fr; }
@@ -1440,7 +1467,7 @@
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
       </div>
-      <div class="card-val" id="statDone">{{ stats.done or 0 }}</div>
+      <div class="card-val skeleton" id="statDone">{{ stats.done or 0 }}</div>
       <div class="card-lbl">Transcoded</div>
     </div>
 
@@ -1450,7 +1477,7 @@
           <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
         </svg>
       </div>
-      <div class="card-val" id="statFailed">{{ stats.failed or 0 }}</div>
+      <div class="card-val skeleton" id="statFailed">{{ stats.failed or 0 }}</div>
       <div class="card-lbl">Failed</div>
     </div>
 
@@ -1463,7 +1490,7 @@
       {% set _s = stats.total_elapsed_s or 0 %}
       {% set _h = (_s / 3600) | int %}
       {% set _m = ((_s % 3600) / 60) | int %}
-      <div class="card-val" id="statGpu">{{ _h }}<small>h</small>&thinsp;{{ _m }}<small>m</small></div>
+      <div class="card-val skeleton" id="statGpu">{{ _h }}<small>h</small>&thinsp;{{ _m }}<small>m</small></div>
       <div class="card-lbl">GPU Time</div>
     </div>
 
@@ -1474,7 +1501,7 @@
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
         </svg>
       </div>
-      <div class="card-val" id="statSaved" style="{{ 'color:var(--green)' if saved_gb >= 0 else 'color:var(--red)' }}">
+      <div class="card-val skeleton" id="statSaved" style="{{ 'color:var(--green)' if saved_gb >= 0 else 'color:var(--red)' }}">
         {{ '%+.1f'|format(saved_gb) }}<small> GB</small>
       </div>
       <div class="card-lbl">Space Saved</div>
@@ -1488,7 +1515,7 @@
           <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
         </svg>
       </div>
-      <div class="card-val" id="statSrc">{{ '%.1f'|format((stats.total_src_bytes or 0)/1073741824) }}<small> GB</small></div>
+      <div class="card-val skeleton" id="statSrc">{{ '%.1f'|format((stats.total_src_bytes or 0)/1073741824) }}<small> GB</small></div>
       <div class="card-lbl">Source Total</div>
     </div>
 
@@ -2546,19 +2573,31 @@
   /* ── Live polling — updates DOM in place, reloads only on state flip ── */
   let _prevRunning = {{ 'true' if state.running else 'false' }};
   const _schedHour = {{ schedule_hour }};
+  let _firstPoll = true;
 
   function _txt(id, v)  { const e = document.getElementById(id); if (e) e.textContent = v; }
   function _html(id, v) { const e = document.getElementById(id); if (e) e.innerHTML   = v; }
+
+  function _removeSkeleton() {
+    ['statDone','statFailed','statGpu','statSaved','statSrc'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('skeleton');
+    });
+  }
 
   setInterval(async () => {
     try {
       const r = await fetch('/api/status');
       const d = await r.json();
+      window._markOnline?.();
       const running = !!d.state.running;
       const st      = d.stats || {};
 
       // One reload when scan starts or ends — covers workers-grid DOM change
       if (running !== _prevRunning) { location.reload(); return; }
+
+      // Remove skeleton on first successful data load
+      if (_firstPoll) { _firstPoll = false; _removeSkeleton(); }
 
       // Stat cards
       _txt('statDone',   st.done   || 0);
@@ -2645,7 +2684,7 @@
 
       // Refresh jobs table in-place — works on mobile even when tab was backgrounded
       fetch('/api/jobs').then(r => r.json()).then(j => _refreshJobsTable(j.jobs)).catch(() => {});
-    } catch (_) {}
+    } catch (_) { window._markOffline?.(); }
   }, 3000);
 
   /* ── Version update check ────────────────────────────────── */
