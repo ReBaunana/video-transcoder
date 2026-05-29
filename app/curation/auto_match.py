@@ -244,6 +244,7 @@ def phase1(conn: sqlite3.Connection) -> int:
             if matched % 100 == 0:
                 conn.commit()
         except Exception:
+            conn.rollback()
             log.exception('phase1: skipping fc_id=%s path=%s', fc_id, path)
 
     conn.commit()
@@ -273,18 +274,21 @@ def phase2(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             if not name:
                 continue
             slug = slugify(name)
-            row = conn.execute(
+            # All reads first
+            existing = conn.execute(
                 "SELECT id FROM performer WHERE slug = ?", (slug,)
             ).fetchone()
-            if row:
-                p_id = row[0]
+            # Now writes — everything after this can be rolled back if it fails
+            if existing:
+                p_id = existing[0]
+                newly_created = False
             else:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO performer (canonical_name, slug, gender) VALUES (?,?,'unknown')",
                     (name, slug),
                 )
-                p_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-                created_names.append(name)
+                p_id = cur.lastrowid
+                newly_created = True
             conn.execute(
                 "INSERT OR IGNORE INTO file_performer "
                 "(file_curation_id, performer_id, position, source) VALUES (?,?,0,'filename')",
@@ -297,10 +301,13 @@ def phase2(conn: sqlite3.Connection) -> tuple[int, list[str]]:
                 "WHERE id=? AND status NOT IN ('renamed','skipped')",
                 (proposed, fc_id),
             )
+            if newly_created:
+                created_names.append(name)
             matched += 1
             if matched % 100 == 0:
                 conn.commit()
         except Exception:
+            conn.rollback()
             log.exception('phase2: skipping fc_id=%s path=%s', fc_id, path)
 
     conn.commit()
