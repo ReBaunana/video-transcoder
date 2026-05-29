@@ -523,6 +523,7 @@
 
   /* ─── Badges (status variants — performers-specific sizes) ─── */
   .badge { padding: .14rem .5rem; font-size: .71rem; }
+  /* No ::before dots on static badges — dot only meaningful on live/running states */
   .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
   .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
   .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 22%, transparent); }
@@ -695,14 +696,14 @@
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
         <div class="upload-zone-text">Upload reference photo</div>
-        <div class="upload-zone-sub">Drag & drop or click — used to seed face recognition</div>
+        <div class="upload-zone-sub">Drag &amp; drop or click - used to seed face recognition</div>
       </div>
 
       <div class="merge-wrap">
         <div class="merge-label">Merge with another performer</div>
         <div class="merge-row">
           <select id="mergeTarget">
-            <option value="">— select performer —</option>
+            <option value="">select performer</option>
             {% for p in performers %}
               {% if p.id != selected_performer.id %}
               <option value="{{ p.id }}">{{ p.canonical_name }}</option>
@@ -743,7 +744,7 @@
               <button class="vote-btn confirm" onclick="confirmVideo({{ selected_performer.id }}, {{ v.id }}, this)" title="Confirm performer is in this video">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
-              <button class="vote-btn reject" onclick="rejectVideo({{ selected_performer.id }}, {{ v.id }}, this)" title="Reject — performer is NOT in this video">
+              <button class="vote-btn reject" onclick="rejectVideo({{ selected_performer.id }}, {{ v.id }}, this)" title="Reject: performer is NOT in this video">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <span class="badge badge-{{ v.status or 'pending' }}" style="margin-left:auto">{{ v.status or 'pending' }}</span>
@@ -1100,7 +1101,7 @@
   async function renameVideo(fileId) {
     try {
       await api('POST', `/library/files/${fileId}/approve`);
-      toast('Approved — will rename on next batch', 'ok');
+      toast('Approved - will rename on next batch', 'ok');
     } catch (e) { toast('Failed: ' + e.message, 'err'); }
   }
 

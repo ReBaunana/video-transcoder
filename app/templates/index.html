@@ -447,7 +447,7 @@
 
   /* Badges (index-specific job-status variants) */
   .badge { padding: .18rem .52rem; font-size: .71rem; }
-  .badge::before {
+  .badge-running::before {
     content: '';
     display: inline-block;
     width: 5px; height: 5px;
@@ -455,11 +455,8 @@
     flex-shrink: 0;
   }
   .badge-done    { background: var(--green-bg); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 18%, transparent); }
-  .badge-done::before    { background: var(--green); }
   .badge-failed  { background: var(--red-bg);   color: var(--red);   border: 1px solid color-mix(in srgb, var(--red) 18%, transparent); }
-  .badge-failed::before  { background: var(--red); }
   .badge-skipped { background: rgba(255,255,255,.03); color: var(--text-dim); border: 1px solid var(--border); }
-  .badge-skipped::before { background: var(--text-dim); }
   .badge-running { background: var(--cyan-bg);  color: var(--cyan);  border: 1px solid color-mix(in srgb, var(--cyan) 18%, transparent); }
   .badge-running::before { background: var(--cyan); animation: pulse-dot 1.4s infinite; box-shadow: 0 0 4px var(--cyan); }
 
@@ -1334,8 +1331,7 @@
   </div>
 
   {% set active_workers = state.workers.values() | select | list | length %}
-  <span class="header-file" id="headerFiles"
-    style="{{ '' if (state.running and active_workers > 0) else 'display:none' }}">
+  <span class="header-file {{ '' if (state.running and active_workers > 0) else 'hidden' }}" id="headerFiles">
     {{ active_workers }} file{{ 's' if active_workers != 1 else '' }} encoding
   </span>
 {% endblock %}
@@ -1580,7 +1576,7 @@
   <div class="settings-strip">
     {% set _cq = cq | int %}
     {% set _cq_cls = 'cq-danger' if _cq <= 22 else ('cq-caution' if _cq <= 25 else ('cq-good' if _cq <= 28 else ('cq-caution' if _cq <= 32 else 'cq-danger'))) %}
-    {% set _cq_hint = 'Near-lossless — file may be bigger than source!' if _cq <= 22 else ('High quality, good space savings' if _cq <= 25 else ('Recommended — balanced quality / size' if _cq <= 28 else ('Slight quality loss, more compression' if _cq <= 32 else 'Noticeable quality loss on film content'))) %}
+    {% set _cq_hint = 'Near-lossless - file may be bigger than source!' if _cq <= 22 else ('High quality, good space savings' if _cq <= 25 else ('Recommended - balanced quality / size' if _cq <= 28 else ('Slight quality loss, more compression' if _cq <= 32 else 'Noticeable quality loss on film content'))) %}
     <div class="setting-card has-tip" style="flex:2;min-width:200px;">
       <div class="setting-label">Quality (CQ)</div>
       <div class="cq-control">
@@ -1592,9 +1588,9 @@
       <div class="tip">
         <strong style="color:var(--text)">Constant Quality (hevc_nvenc)</strong><br>
         Lower = better quality, larger file.<br><br>
-        <span style="color:var(--red)">15–22</span>&nbsp;&nbsp;near-lossless &mdash; can be bigger than source!<br>
+        <span style="color:var(--red)">15–22</span>&nbsp;&nbsp;near-lossless - can be bigger than source!<br>
         <span style="color:var(--yellow)">23–25</span>&nbsp;&nbsp;high quality, good space savings<br>
-        <span style="color:var(--green)">26–28</span>&nbsp;&nbsp;recommended &mdash; balanced<br>
+        <span style="color:var(--green)">26–28</span>&nbsp;&nbsp;recommended - balanced<br>
         <span style="color:var(--yellow)">29–32</span>&nbsp;&nbsp;slight quality loss, smaller files<br>
         <span style="color:var(--red)">33+&nbsp;&nbsp;</span>&nbsp;&nbsp;noticeable quality loss
       </div>
@@ -1611,10 +1607,10 @@
         <strong style="color:var(--text)">Encode preset (hevc_nvenc)</strong><br>
         Controls how hard the encoder searches<br>
         for the best result. Unlike software codecs,<br>
-        the quality difference is small — NVENC is<br>
+        the quality difference is small. NVENC is<br>
         fixed-function hardware.<br><br>
         <span style="color:var(--text-muted)">ultrafast</span>&nbsp;&nbsp;fastest, files slightly larger<br>
-        <span style="color:var(--green)">fast</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;good balance &mdash; recommended<br>
+        <span style="color:var(--green)">fast</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;good balance - recommended<br>
         <span style="color:var(--text-muted)">medium</span>&nbsp;&nbsp;&nbsp;5–10% smaller, 2× slower<br>
         <span style="color:var(--text-muted)">slow</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;marginal gain, 3× slower
       </div>
@@ -1664,7 +1660,7 @@
         <span class="worker-label">NVIDIA {{ slot_id + 1 }}</span>
         <span class="tag tag-backend-nvenc" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'nvenc')|upper }}{% else %}NVENC{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
-        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}">&#128465;</button>
+        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
       </div>
       <div class="worker-file" id="wfile-{{ slot_id }}">{{ w.file if w else '—' }}</div>
       {% if w %}
@@ -1679,7 +1675,7 @@
       {% else %}
       <div class="worker-idle-inner">
         <span class="worker-idle-dot"></span>
-        <span class="worker-idle-txt">Idle &mdash; waiting for next file</span>
+        <span class="worker-idle-txt">Idle, waiting for next file</span>
       </div>
       {% endif %}
     </div>
@@ -1699,7 +1695,7 @@
         <span class="worker-label">Intel {{ slot_id - nvenc_workers + 1 }}</span>
         <span class="tag tag-backend-vaapi" id="wbackend-{{ slot_id }}">{% if w %}{{ (w.backend or 'vaapi')|upper }}{% else %}VAAPI{% endif %}</span>
         {% if w %}<span class="tag tag-codec">{{ w.codec }} &rarr; hevc</span>{% endif %}
-        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}">&#128465;</button>
+        <button class="worker-kill-btn" id="wkill-{{ slot_id }}" title="Stop &amp; delete source file" onclick="openKillModal({{ slot_id }})" style="{{ '' if w else 'display:none' }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
       </div>
       <div class="worker-file" id="wfile-{{ slot_id }}">{{ w.file if w else '—' }}</div>
       {% if w %}
@@ -1714,7 +1710,7 @@
       {% else %}
       <div class="worker-idle-inner">
         <span class="worker-idle-dot"></span>
-        <span class="worker-idle-txt">Idle &mdash; waiting for next file</span>
+        <span class="worker-idle-txt">Idle, waiting for next file</span>
       </div>
       {% endif %}
     </div>
@@ -1840,19 +1836,19 @@
       <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">What this does</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Scans all folders under <code class="modal-code">/media</code>, finds video files not yet in H.265, and re-encodes them using your NVIDIA GPU (NVENC). The original file is replaced in-place — Plex and Jellyfin don't need to rescan. Already-processed files are cached and skipped on future scans.
+          Scans all folders under <code class="modal-code">/media</code>, finds video files not yet in H.265, and re-encodes them using your NVIDIA GPU (NVENC). The original file is replaced in-place. Plex and Jellyfin don't need to rescan. Already-processed files are cached and skipped on future scans.
         </div>
       </div>
 
       <div style="height:1px;background:var(--border);"></div>
 
       <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">CQ — Constant Quality</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">CQ - Constant Quality</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
           Controls quality vs. file size. <strong style="color:var(--text)">Lower = better quality, larger file.</strong><br><br>
-          <span style="color:var(--red)">15–22</span> &nbsp;Near-lossless — file can be <em>bigger</em> than source<br>
+          <span style="color:var(--red)">15–22</span> &nbsp;Near-lossless - file can be <em>bigger</em> than source<br>
           <span style="color:var(--yellow)">23–25</span> &nbsp;High quality, 20–40% smaller<br>
-          <span style="color:var(--green)">26–28</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> — good quality, 40–60% smaller<br>
+          <span style="color:var(--green)">26–28</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - good quality, 40–60% smaller<br>
           <span style="color:var(--yellow)">29–32</span> &nbsp;Slight quality loss, 55–70% smaller<br>
           <span style="color:var(--red)">33+&nbsp;&nbsp;</span> &nbsp;Noticeable artifacts on film content<br><br>
           If you change CQ, files transcoded at a different CQ will be re-encoded on the next scan.
@@ -1864,10 +1860,10 @@
       <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Preset</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          Controls how hard the encoder searches for compression. Unlike software codecs, NVENC is fixed-function hardware — the quality difference between <code class="modal-code">fast</code> and <code class="modal-code">slow</code> is small.<br><br>
-          <span style="color:var(--green)">fast</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Best throughput, minimal quality difference — <strong style="color:var(--text)">recommended</strong><br>
+          Controls how hard the encoder searches for compression. Unlike software codecs, NVENC is fixed-function hardware. The quality difference between <code class="modal-code">fast</code> and <code class="modal-code">slow</code> is small.<br><br>
+          <span style="color:var(--green)">fast</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Best throughput, minimal quality difference - <strong style="color:var(--text)">recommended</strong><br>
           <span style="color:var(--text-muted)">medium</span> &nbsp;5–10% smaller files, 2× slower<br>
-          <span style="color:var(--text-muted)">slow</span> &nbsp;&nbsp;&nbsp;&nbsp;Marginal gain, 3× slower — not worth it
+          <span style="color:var(--text-muted)">slow</span> &nbsp;&nbsp;&nbsp;&nbsp;Marginal gain, 3× slower - not worth it
         </div>
       </div>
 
@@ -1878,10 +1874,10 @@
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
           How many files encode simultaneously. All streams share the single NVENC unit.<br><br>
           <span style="color:var(--text-muted)">1–2×</span> &nbsp;NVENC underutilized<br>
-          <span style="color:var(--green)">3–4×</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> — ~80% NVENC load<br>
+          <span style="color:var(--green)">3–4×</span> &nbsp;<strong style="color:var(--text)">Recommended</strong> - ~80% NVENC load<br>
           <span style="color:var(--text-muted)">5–6×</span> &nbsp;Good I/O overlap, high throughput<br>
           <span style="color:var(--red)">7–8×</span> &nbsp;VRAM pressure risk on 4 GB GPUs<br><br>
-          CPU stays at ~10–20% regardless — all work is done on the GPU.
+          CPU stays at ~10–20% regardless. All work is done on the GPU.
         </div>
       </div>
 
@@ -1890,7 +1886,7 @@
       <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Output Container</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          The output container matches the source where possible — Plex and Jellyfin don't need to rescan because the file stays in the same folder with the same name.<br><br>
+          The output container matches the source where possible. Plex and Jellyfin don't need to rescan because the file stays in the same folder with the same name.<br><br>
           <code class="modal-code">.mp4 .m4v .mov</code> &rarr; <code class="modal-code">.mp4</code><br>
           <code class="modal-code">.mkv</code> &rarr; <code class="modal-code">.mkv</code><br>
           <code class="modal-code">.avi .wmv .flv .ts .mpg .mpeg .divx .webm</code> &rarr; <code class="modal-code">.mkv</code><br><br>
@@ -1903,8 +1899,8 @@
       <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Reset DB vs Clean Jobs</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          <strong style="color:var(--text)">Clean Jobs</strong> — deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
-          <strong style="color:var(--text)">Reset DB</strong> — deletes job history <em>and</em> file cache. All files will be re-transcoded on the next scan as if they were never seen before.<br><br>
+          <strong style="color:var(--text)">Clean Jobs</strong>: deletes job history only. File cache is kept, so already-transcoded files will <em>not</em> be re-processed.<br><br>
+          <strong style="color:var(--text)">Reset DB</strong>: deletes job history <em>and</em> file cache. All files will be re-transcoded on the next scan as if they were never seen before.<br><br>
           <span style="color:var(--green)">Settings (CQ, preset, workers) are never affected by either action.</span> They are stored separately in <code class="modal-code">/data/settings.json</code>.
         </div>
       </div>
@@ -1924,13 +1920,13 @@
       <div>
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">System Resources Bar (ETH)</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
-          The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="modal-code">/proc/net/dev</code> via a read-only bind-mount — the container itself carries almost no traffic.<br><br>
+          The bar at the top shows live CPU, RAM, GPU, and Ethernet RX/TX. ETH reads from the <strong style="color:var(--text)">host's</strong> <code class="modal-code">/proc/net/dev</code> via a read-only bind-mount. The container itself carries almost no traffic.<br><br>
           Required in <code class="modal-code">docker-compose.yml</code>:<br>
           <code class="modal-code">- /proc/1/net:/host/proc/net:ro</code><br>
-          <span style="color:var(--text-dim);font-size:.75rem;">⚠️ Must be <code class="modal-code">/proc/1/net</code>, not <code class="modal-code">/proc/net</code> — the latter is a symlink that resolves to the container's own network namespace.</span><br><br>
+          <span style="color:var(--text-dim);font-size:.75rem;">⚠️ Must be <code class="modal-code">/proc/1/net</code>, not <code class="modal-code">/proc/net</code>: the latter is a symlink that resolves to the container's own network namespace.</span><br><br>
           Two env vars control which interface is shown:<br><br>
-          <code class="modal-code">NET_IFACE=eno1</code> &nbsp;— pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
-          <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;— path to read counters from. Only change this if you use a different mount point.
+          <code class="modal-code">NET_IFACE=eno1</code> &nbsp;- pin to a specific NIC (comma-separated for bonding). Defaults to <code class="modal-code">eno1</code>; change to your host's interface name (e.g. <code class="modal-code">enp6s0</code>, <code class="modal-code">eth0</code>).<br><br>
+          <code class="modal-code">PROC_NET_DEV=/host/proc/net/dev</code> &nbsp;- path to read counters from. Only change this if you use a different mount point.
         </div>
       </div>
 
@@ -1940,9 +1936,9 @@
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;">Display Theme (Auto / Light / Dark)</div>
         <div style="font-size:.8rem;color:var(--text-muted);line-height:1.65;">
           The theme button in <strong style="color:var(--text)">☰ → (first item)</strong> cycles through three modes:<br><br>
-          <span style="color:var(--text)">🖥 Auto</span> &nbsp;— follows your device's system setting. If your Mac or phone switches between Dark and Light mode automatically (e.g. sunrise/sunset schedule), the dashboard follows along in real time. No manual action needed.<br><br>
-          <span style="color:var(--text)">☀ Light</span> &nbsp;— forces light mode regardless of the system setting.<br><br>
-          <span style="color:var(--text)">☾ Dark</span> &nbsp;— forces dark mode regardless of the system setting.<br><br>
+          <span style="color:var(--text)">🖥 Auto</span> &nbsp;- follows your device's system setting. If your Mac or phone switches between Dark and Light mode automatically (e.g. sunrise/sunset schedule), the dashboard follows along in real time. No manual action needed.<br><br>
+          <span style="color:var(--text)">☀ Light</span> &nbsp;- forces light mode regardless of the system setting.<br><br>
+          <span style="color:var(--text)">☾ Dark</span> &nbsp;- forces dark mode regardless of the system setting.<br><br>
           The choice is saved in your browser. To reset to system-following behavior, click until you see <strong style="color:var(--text)">Auto</strong>.
         </div>
       </div>
@@ -1966,7 +1962,7 @@
     </div>
     <div class="modal-body" style="gap:.5rem;padding-bottom:.5rem">
       <div style="font-size:.78rem;color:var(--text-muted);line-height:1.5;">
-        These files failed the duration check — the container metadata claims a longer duration than the actual video data. Likely incomplete downloads or broken recordings. Deleting removes them from disk permanently.
+        These files failed the duration check. The container metadata claims a longer duration than the actual video data. Likely incomplete downloads or broken recordings. Deleting removes them from disk permanently.
       </div>
       <div id="corruptFileList" style="max-height:52vh;overflow-y:auto;padding:.1rem 0;"></div>
       <div class="modal-footer" style="padding-top:.6rem">
@@ -2329,7 +2325,7 @@
     const ok = await openConfirm(
       isAll ? 'Clean All Jobs' : 'Clean Failed Jobs',
       isAll
-        ? 'Clear all job history?<br><br>File cache is kept — already-transcoded files will <em>not</em> be re-processed.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>'
+        ? 'Clear all job history?<br><br>File cache is kept. Already-transcoded files will <em>not</em> be re-processed.<br><span style="color:var(--green);font-size:.77rem">Settings (CQ, preset, etc.) are not affected.</span>'
         : 'Remove all <strong style="color:var(--text)">failed</strong> jobs from history?<br><br>File cache and successful jobs are untouched.',
       'Clean'
     );
@@ -2374,7 +2370,7 @@
       const r = await fetch('/api/reset', { method: 'POST' });
       const d = await r.json();
       if (!d.ok) { showToast(d.msg || 'Reset failed', 'error'); return; }
-      showToast('Database reset — reloading…', 'success');
+      showToast('Database reset, reloading…', 'success');
       setTimeout(() => { window.location.href = '/?_=' + Date.now(); }, 1200);
     } catch (e) {
       showToast('Reset failed: ' + e.message, 'error');
@@ -2395,9 +2391,9 @@
       );
     }
     if (hint) hint.textContent = (
-      v <= 22 ? 'Near-lossless — file may be bigger than source!'  :
+      v <= 22 ? 'Near-lossless - file may be bigger than source!'  :
       v <= 25 ? 'High quality, good space savings'                 :
-      v <= 28 ? 'Recommended — balanced quality / size'            :
+      v <= 28 ? 'Recommended - balanced quality / size'            :
       v <= 32 ? 'Slight quality loss, more compression'            :
                'Noticeable quality loss on film content'
     );
@@ -2635,10 +2631,10 @@
       const hf       = document.getElementById('headerFiles');
       if (hf) {
         if (running && activeW > 0) {
-          hf.textContent   = activeW + (activeW === 1 ? ' file encoding' : ' files encoding');
-          hf.style.display = '';
+          hf.textContent = activeW + (activeW === 1 ? ' file encoding' : ' files encoding');
+          hf.classList.remove('hidden');
         } else {
-          hf.style.display = 'none';
+          hf.classList.add('hidden');
         }
       }
 
@@ -2756,7 +2752,7 @@
       const btn  = document.getElementById('mdisable-' + name);
       if (card) card.classList.toggle('disabled-mount', d.disabled);
       if (btn)  btn.title = d.disabled ? 'Enable for scanning' : 'Disable from scanning';
-      showToast(d.disabled ? name + ' disabled — will be skipped on next scan' : name + ' enabled', d.disabled ? 'warn' : 'success');
+      showToast(d.disabled ? name + ' disabled - will be skipped on next scan' : name + ' enabled', d.disabled ? 'warn' : 'success');
     } catch (e) {
       showToast('Failed: ' + e.message, 'error');
     }

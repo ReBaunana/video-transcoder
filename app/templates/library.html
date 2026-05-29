@@ -395,20 +395,10 @@
 
 
   /* ─── Badges (status variants) ──────────────────── */
-  .badge::before {
-    content: '';
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
   .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
-  .badge-pending::before { background: var(--text-muted); }
   .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
-  .badge-approved::before { background: var(--accent); }
   .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 22%, transparent); }
-  .badge-renamed::before { background: var(--green); }
   .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
-  .badge-skipped::before { background: var(--text-dim); }
 
   .face-link {
     display: inline-block;
@@ -571,6 +561,15 @@
   }
 
   .stat-card, .panel, .mount-card, .action-bar { animation: fade-up .32s ease both; }
+
+  .renamed-done-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .28rem;
+    font-size: .7rem;
+    color: var(--green);
+    font-weight: 600;
+  }
 
   /* Face status panel */
   .face-status {
@@ -807,10 +806,10 @@
   <!-- Mobile mount select (only visible at ≤640px) -->
   <div class="mount-select-mobile">
     <select onchange="location.href='/library?mount='+encodeURIComponent(this.value)" aria-label="Select mount">
-      <option value="">— Select a mount —</option>
+      <option value="">Select a mount</option>
       {% for m in mounts %}
         <option value="{{ m.name }}" {{ 'selected' if m.name == selected_mount else '' }}>
-          {{ m.name }} — {{ m.renamed }}/{{ m.total }} renamed
+          {{ m.name }} ({{ m.renamed }}/{{ m.total }} renamed)
         </option>
       {% endfor %}
     </select>
@@ -937,7 +936,8 @@
             </div>
             <div data-role="state-warning" hidden>
               <div class="face-status-row warning">
-                <span>⚠ High failure rate (<span data-role="failure-rate"></span>%)</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>High failure rate (<span data-role="failure-rate"></span>%)</span>
               </div>
               <div data-role="last-error" class="face-status-error"></div>
             </div>
@@ -947,7 +947,7 @@
         <!-- File table -->
         <div class="panel tbl-panel">
           <div class="panel-header">
-            <div class="section-title">Files — {{ selected_mount }}</div>
+            <div class="section-title">Files · {{ selected_mount }}</div>
             <div class="panel-title" style="text-transform:none;letter-spacing:0;font-weight:500">
               {{ total_files }} total
             </div>
@@ -984,7 +984,7 @@
                     {% endif %}
                   </td>
                   <td class="td-performers" title="{{ (f.performers or []) | join(', ') }}">
-                    {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+                    {% if f.performers %}{{ f.performers | join(', ') }}{% else %}<span class="text-dim">-</span>{% endif %}
                     {% if f.face_suggestions and f.face_suggestions > 0 %}
                     <a class="face-link" href="/performers?file={{ f.id }}">{{ f.face_suggestions }} face{{ 's' if f.face_suggestions != 1 else '' }}</a>
                     {% endif %}
@@ -1011,7 +1011,7 @@
                       {% elif f.status == 'approved' %}
                       <button class="btn btn-sm" onclick="skipFile({{ f.id }})">Unapprove</button>
                       {% elif f.status == 'renamed' %}
-                      <span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>
+                      <span class="renamed-done-label"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> done</span>
                       {% elif f.status == 'skipped' %}
                       <button class="btn btn-sm" onclick="approveFile({{ f.id }})">Re-approve</button>
                       {% endif %}
@@ -1196,7 +1196,7 @@
       } else if (status === 'skipped') {
         actions.innerHTML = `<button class="btn btn-sm" onclick="approveFile(${id})">Re-approve</button>`;
       } else if (status === 'renamed') {
-        actions.innerHTML = `<span style="font-size:.7rem;color:var(--green);font-weight:600">✓ done</span>`;
+        actions.innerHTML = `<span class="renamed-done-label"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> done</span>`;
       }
     }
   }
@@ -1521,7 +1521,7 @@
           // Update mobile select option labels
           document.querySelectorAll('.mount-select-mobile select option[value]').forEach(opt => {
             const m = mounts.find(x => x.name === opt.value);
-            if (m && opt.value) opt.textContent = `${m.name} — ${m.renamed}/${m.total} renamed`;
+            if (m && opt.value) opt.textContent = `${m.name} (${m.renamed}/${m.total} renamed)`;
           });
         })
         .catch(() => { window._markOffline?.(); });
