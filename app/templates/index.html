@@ -2683,7 +2683,7 @@
       }
 
       // Refresh jobs table in-place — works on mobile even when tab was backgrounded
-      fetch('/api/jobs').then(r => r.json()).then(j => _refreshJobsTable(j.jobs)).catch(() => {});
+      fetch('/api/jobs').then(r => r.json()).then(j => _refreshJobsTable(j.jobs)).catch(() => { window._markOffline?.(); });
     } catch (_) { window._markOffline?.(); }
   }, 3000);
 
