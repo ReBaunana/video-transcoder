@@ -718,7 +718,7 @@
     </div>
 
     <!-- Videos -->
-    <div class="detail-section-title">
+    <div class="detail-section-title section-title">
       Videos
       <span class="count-tag">{{ performer_videos | length }}</span>
     </div>
@@ -761,7 +761,7 @@
 
     <!-- Face match suggestions -->
     {% if face_matches %}
-    <div class="detail-section-title">
+    <div class="detail-section-title section-title">
       Unverified suggestions
       <span class="count-tag">{{ face_matches | length }}</span>
     </div>
@@ -877,7 +877,7 @@
   <!-- Unknown faces section -->
   {% if unknown_faces is defined and unknown_faces %}
   <div class="unknown-section">
-    <div class="detail-section-title" style="margin-bottom:1rem">
+    <div class="detail-section-title section-title" style="margin-bottom:1rem">
       Unidentified faces
       <span class="count-tag">{{ unknown_faces | length }}</span>
     </div>
