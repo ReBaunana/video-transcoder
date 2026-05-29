@@ -31,7 +31,7 @@
   }
   .status-pill.running {
     background: var(--green-bg);
-    border-color: rgba(52,211,153,.22);
+    border-color: color-mix(in srgb, var(--green) 22%, transparent);
     color: var(--green);
   }
 
@@ -91,14 +91,14 @@
 
   /* ─── Index-specific button variants ────────── */
   .btn-soft-stop {
-    background: rgba(251,191,36,.1);
-    border-color: rgba(251,191,36,.22);
+    background: var(--yellow-bg);
+    border-color: color-mix(in srgb, var(--yellow) 22%, transparent);
     color: var(--yellow);
   }
   .btn-soft-stop:hover {
-    background: rgba(251,191,36,.18);
-    border-color: rgba(251,191,36,.4);
-    box-shadow: 0 0 14px rgba(251,191,36,.12);
+    background: color-mix(in srgb, var(--yellow) 18%, transparent);
+    border-color: color-mix(in srgb, var(--yellow) 40%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--yellow) 12%, transparent);
   }
 
   /* ─── Main ───────────────────────────────────── */
@@ -169,30 +169,30 @@
   }
 
   /* per-card accent colours */
-  .c-blue   .card-val { color: var(--accent); }
+  .c-accent .card-val { color: var(--accent); }
   .c-red    .card-val { color: var(--red); }
   .c-cyan   .card-val { color: var(--cyan); }
   .c-green  .card-val { color: var(--green); }
   .c-violet .card-val { color: var(--accent-2); }
 
-  .c-green { border-color: rgba(52,211,153,.14); }
+  .c-green { border-color: color-mix(in srgb, var(--green) 14%, transparent); }
   .c-green::after {
     content: '';
     position: absolute;
     bottom: -16px; right: -16px;
     width: 70px; height: 70px;
-    background: radial-gradient(circle, rgba(52,211,153,.1), transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--green) 10%, transparent), transparent 70%);
     pointer-events: none;
   }
 
   /* ─── Progress box ───────────────────────────── */
   .progress-box {
     background: var(--surface);
-    border: 1px solid rgba(249,115,22,.15);
+    border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
     border-radius: var(--radius);
     padding: 1.15rem 1.4rem;
     margin-bottom: 1.4rem;
-    box-shadow: 0 0 36px rgba(249,115,22,.05);
+    box-shadow: 0 0 36px color-mix(in srgb, var(--accent) 5%, transparent);
     position: relative;
     overflow: hidden;
   }
@@ -242,7 +242,7 @@
   }
   .tag-codec {
     background: var(--cyan-bg);
-    border-color: rgba(103,232,249,.18);
+    border-color: color-mix(in srgb, var(--cyan) 18%, transparent);
     color: var(--cyan);
   }
 
@@ -368,15 +368,12 @@
     position: absolute;
     top: 0; right: 0; bottom: 0;
     width: 40px;
-    background: linear-gradient(to right, transparent, rgba(8,8,16,.65));
+    background: linear-gradient(to right, transparent, var(--bg-translucent));
     pointer-events: none;
     border-radius: 0 var(--radius) var(--radius) 0;
     opacity: 0;
     transition: opacity .2s;
     z-index: 3;
-  }
-  [data-theme="light"] .panel::after {
-    background: linear-gradient(to right, transparent, rgba(240,241,248,.75));
   }
   .panel.has-overflow::after { opacity: 1; }
 
@@ -456,13 +453,13 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .badge-done    { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.18); }
+  .badge-done    { background: var(--green-bg); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 18%, transparent); }
   .badge-done::before    { background: var(--green); }
-  .badge-failed  { background: var(--red-bg);   color: var(--red);   border: 1px solid rgba(248,113,113,.18); }
+  .badge-failed  { background: var(--red-bg);   color: var(--red);   border: 1px solid color-mix(in srgb, var(--red) 18%, transparent); }
   .badge-failed::before  { background: var(--red); }
   .badge-skipped { background: rgba(255,255,255,.03); color: var(--text-dim); border: 1px solid var(--border); }
   .badge-skipped::before { background: var(--text-dim); }
-  .badge-running { background: var(--cyan-bg);  color: var(--cyan);  border: 1px solid rgba(103,232,249,.18); }
+  .badge-running { background: var(--cyan-bg);  color: var(--cyan);  border: 1px solid color-mix(in srgb, var(--cyan) 18%, transparent); }
   .badge-running::before { background: var(--cyan); animation: pulse-dot 1.4s infinite; box-shadow: 0 0 4px var(--cyan); }
 
   .empty-row td {
@@ -496,7 +493,7 @@
     box-shadow: 0 4px 18px rgba(0,0,0,.3);
   }
   .mount-card.active {
-    border-color: rgba(103,232,249,.22);
+    border-color: color-mix(in srgb, var(--cyan) 22%, transparent);
     background: var(--cyan-bg);
   }
 
@@ -535,7 +532,7 @@
     color: var(--text-muted); border-radius: var(--radius-sm);
     transition: color .15s, background .15s; flex-shrink: 0;
   }
-  .mount-disable-btn:hover { color: var(--red); background: rgba(248,113,113,.1); }
+  .mount-disable-btn:hover { color: var(--red); background: var(--red-bg); }
   .mount-card.disabled-mount .mount-disable-btn { color: var(--red); }
   tr.mount-hidden { display: none !important; }
 
@@ -583,15 +580,15 @@
     transition: border-color .2s, color .2s, background .2s, box-shadow .2s;
   }
   .version-badge.update-available {
-    background: rgba(251,191,36,.08);
-    border-color: rgba(251,191,36,.3);
+    background: color-mix(in srgb, var(--yellow) 8%, transparent);
+    border-color: color-mix(in srgb, var(--yellow) 30%, transparent);
     color: var(--yellow);
-    box-shadow: 0 0 14px rgba(251,191,36,.1);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--yellow) 10%, transparent);
     cursor: pointer;
   }
   .version-badge.update-available:hover {
-    background: rgba(251,191,36,.14);
-    border-color: rgba(251,191,36,.5);
+    background: color-mix(in srgb, var(--yellow) 14%, transparent);
+    border-color: color-mix(in srgb, var(--yellow) 50%, transparent);
   }
   .vbadge-dot {
     width: 5px; height: 5px;
@@ -631,11 +628,11 @@
     pointer-events: none;
   }
   .worker-card.active {
-    border-color: rgba(249,115,22,.22);
-    box-shadow: 0 0 28px rgba(249,115,22,.06);
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow: 0 0 28px color-mix(in srgb, var(--accent) 6%, transparent);
   }
   .worker-card.active::before {
-    background: linear-gradient(135deg, rgba(249,115,22,.05) 0%, transparent 50%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, transparent) 0%, transparent 50%);
   }
 
   .worker-header {
@@ -666,8 +663,8 @@
     letter-spacing: -.01em;
   }
 
-  .tag-backend-nvenc { color: var(--green); border-color: rgba(52,211,153,.35); }
-  .tag-backend-vaapi  { color: var(--cyan);  border-color: rgba(103,232,249,.35); }
+  .tag-backend-nvenc { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+  .tag-backend-vaapi  { color: var(--cyan);  border-color: color-mix(in srgb, var(--cyan) 35%, transparent); }
 
   .worker-kill-btn {
     margin-left: auto;
@@ -681,7 +678,7 @@
     transition: color .15s, border-color .15s, background .15s;
     flex-shrink: 0;
   }
-  .worker-kill-btn:hover { color: #f87171; border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.08); }
+  .worker-kill-btn:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); background: var(--red-bg); }
 
   .kill-modal-overlay {
     display: none;
@@ -708,8 +705,8 @@
   .kill-modal-btns button { padding: .45rem 1rem; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-size: .85rem; }
   .kill-btn-cancel  { background: var(--surface); color: var(--text); }
   .kill-btn-cancel:hover { border-color: var(--accent); }
-  .kill-btn-confirm { background: rgba(248,113,113,.15); color: #f87171; border-color: rgba(248,113,113,.4); }
-  .kill-btn-confirm:hover { background: rgba(248,113,113,.25); }
+  .kill-btn-confirm { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+  .kill-btn-confirm:hover { background: color-mix(in srgb, var(--red) 25%, transparent); }
 
   .worker-group-hdr {
     grid-column: 1 / -1;
@@ -724,8 +721,8 @@
     border-bottom: 1px solid var(--border);
     margin-top: .2rem;
   }
-  .worker-group-nvenc { color: var(--green); border-color: rgba(52,211,153,.25); }
-  .worker-group-vaapi { color: var(--cyan);  border-color: rgba(103,232,249,.25); }
+  .worker-group-nvenc { color: var(--green); border-color: color-mix(in srgb, var(--green) 25%, transparent); }
+  .worker-group-vaapi { color: var(--cyan);  border-color: color-mix(in srgb, var(--cyan) 25%, transparent); }
   .worker-group-count { margin-left: auto; font-weight: 400; color: var(--text-muted); }
 
   .worker-idle-inner {
@@ -911,7 +908,7 @@
   }
   .toggle-btn.active {
     background: var(--red-bg);
-    border-color: rgba(248,113,113,.3);
+    border-color: color-mix(in srgb, var(--red) 30%, transparent);
     color: var(--red);
   }
   .toggle-btn.active::before {
@@ -942,11 +939,11 @@
     border-radius: 99px;
     /*  15──22 danger · 22──25 caution · 25──28 good · 28──32 caution · 32──40 danger  */
     background: linear-gradient(90deg,
-      #f87171 0%,  #f87171 28%,
-      #fbbf24 28%, #fbbf24 40%,
-      #34d399 40%, #34d399 52%,
-      #fbbf24 52%, #fbbf24 68%,
-      #f87171 68%
+      var(--red) 0%,  var(--red) 28%,
+      var(--yellow) 28%, var(--yellow) 40%,
+      var(--green) 40%, var(--green) 52%,
+      var(--yellow) 52%, var(--yellow) 68%,
+      var(--red) 68%
     );
     outline: none;
     cursor: pointer;
@@ -970,13 +967,13 @@
   }
 
   .btn-backup {
-    background: rgba(249,115,22,.08);
-    border-color: rgba(249,115,22,.18);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
   }
   .btn-backup:hover {
-    background: rgba(249,115,22,.15);
-    border-color: rgba(249,115,22,.35);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
   /* ─── Advanced dropdown ─────────────────────────── */
@@ -1023,7 +1020,7 @@
     transition: background .1s, color .1s;
   }
   .adv-item:hover { background: var(--surface-3); color: var(--text); }
-  .adv-item.danger { color: rgba(248,113,113,.75); }
+  .adv-item.danger { color: color-mix(in srgb, var(--red) 75%, transparent); }
   .adv-item.danger:hover { background: var(--red-bg); color: var(--red); }
   .adv-submenu { padding: .25rem .5rem .4rem 1.9rem; display:flex; flex-direction:column; gap:.35rem; }
   .adv-sub-opt { font-size:.8rem; color:var(--text-muted); cursor:pointer; display:flex; align-items:center; gap:.45rem; user-select:none; }
@@ -1109,7 +1106,7 @@
     background: var(--surface-3);
     padding: .18rem .5rem;
     border-radius: var(--radius-sm);
-    border: 1px solid rgba(103,232,249,.12);
+    border: 1px solid color-mix(in srgb, var(--cyan) 12%, transparent);
   }
 
   .modal-footer {
@@ -1152,8 +1149,8 @@
   }
   .filter-pill:hover { border-color: var(--border-hover); color: var(--text); }
   .filter-pill.fp-active { background: var(--surface-3); border-color: var(--border-hover); color: var(--text); }
-  .filter-pill.fp-done   { border-color: rgba(52,211,153,.25);  color: var(--green); background: var(--green-bg); }
-  .filter-pill.fp-failed { border-color: rgba(248,113,113,.25); color: var(--red);   background: var(--red-bg);   }
+  .filter-pill.fp-done   { border-color: color-mix(in srgb, var(--green) 25%, transparent); color: var(--green); background: var(--green-bg); }
+  .filter-pill.fp-failed { border-color: color-mix(in srgb, var(--red) 25%, transparent);   color: var(--red);   background: var(--red-bg);   }
 
   /* ─── Tooltips ──────────────────────────────────── */
   .has-tip { position: relative; }
@@ -1213,7 +1210,7 @@
     max-width: 360px;
     padding: .65rem 1rem;
     background: var(--surface-3);
-    border: 1px solid rgba(251,191,36,.3);
+    border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent);
     border-left: 3px solid var(--yellow);
     border-radius: var(--radius-sm);
     font-size: .79rem;
@@ -1223,8 +1220,8 @@
     pointer-events: auto;
     animation: toast-in .22s ease-out both;
   }
-  .toast.t-success { border-color: rgba(52,211,153,.3); border-left-color: var(--green); }
-  .toast.t-error   { border-color: rgba(248,113,113,.3); border-left-color: var(--red); }
+  .toast.t-success { border-color: color-mix(in srgb, var(--green) 30%, transparent); border-left-color: var(--green); }
+  .toast.t-error   { border-color: color-mix(in srgb, var(--red) 30%, transparent);   border-left-color: var(--red); }
 
   @keyframes toast-in {
     from { opacity: 0; transform: translateX(-110%); }
@@ -1239,8 +1236,8 @@
   .btn-run.btn-working  { opacity: .55; pointer-events: none; }
 
   .btn-running {
-    background: rgba(52,211,153,.06);
-    border: 1px solid rgba(52,211,153,.18);
+    background: color-mix(in srgb, var(--green) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--green) 18%, transparent);
     color: var(--green);
     cursor: default;
     pointer-events: none;
@@ -1264,9 +1261,9 @@
     border-radius: 99px;
     font-size: .65rem;
     font-weight: 700;
-    background: rgba(248,113,113,.18);
+    background: color-mix(in srgb, var(--red) 18%, transparent);
     color: var(--red);
-    border: 1px solid rgba(248,113,113,.3);
+    border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
     margin-left: auto;
   }
   .corrupt-mount-header {
@@ -1319,16 +1316,16 @@
   /* ─── Confirm modal variant ───────────────────────── */
   .modal-warn-stripe { border-left: 3px solid var(--yellow); }
   .modal-warn-stripe .modal-header {
-    border-bottom-color: rgba(251,191,36,.2);
+    border-bottom-color: color-mix(in srgb, var(--yellow) 20%, transparent);
   }
   .btn-danger {
-    background: rgba(248,113,113,.1);
-    border-color: rgba(248,113,113,.25);
+    background: var(--red-bg);
+    border-color: color-mix(in srgb, var(--red) 25%, transparent);
     color: var(--red);
   }
   .btn-danger:hover {
-    background: rgba(248,113,113,.18);
-    border-color: rgba(248,113,113,.45);
+    background: color-mix(in srgb, var(--red) 18%, transparent);
+    border-color: color-mix(in srgb, var(--red) 45%, transparent);
   }
 
   /* tooltip appearing below the trigger (e.g. sticky header) */
@@ -1479,7 +1476,7 @@
   <!-- ── Stat cards ───────────────────────────────────────── -->
   <div class="cards">
 
-    <div class="card c-blue">
+    <div class="card c-accent">
       <div class="card-icon">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>

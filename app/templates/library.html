@@ -58,7 +58,7 @@
     box-shadow: 0 4px 18px rgba(0,0,0,.3);
   }
   .mount-card.active {
-    border-color: rgba(249,115,22,.40);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
     background: var(--accent-dim);
     box-shadow: 0 0 14px var(--accent-glow);
   }
@@ -173,7 +173,7 @@
     color: var(--text-muted);
     margin-left: .3rem;
   }
-  .stat-card.c-blue .stat-card-val { color: var(--accent); }
+  .stat-card.c-accent .stat-card-val { color: var(--accent); }
   .stat-card.c-green .stat-card-val { color: var(--green); }
   .stat-card.c-yellow .stat-card-val { color: var(--yellow); }
   .stat-card.c-cyan .stat-card-val { color: var(--cyan); }
@@ -229,14 +229,11 @@
     right: 0;
     bottom: 0;
     width: 40px;
-    background: linear-gradient(to right, transparent, rgba(8,8,16,.6));
+    background: linear-gradient(to right, transparent, var(--bg-translucent));
     pointer-events: none;
     border-radius: 0 var(--radius) var(--radius) 0;
     opacity: 0;
     transition: opacity .2s;
-  }
-  [data-theme="light"] .tbl-panel::after {
-    background: linear-gradient(to right, transparent, rgba(240,241,248,.7));
   }
   .tbl-panel.has-overflow::after { opacity: 1; }
 
@@ -323,7 +320,7 @@
   }
   #filesTable tbody tr:hover td.td-actions { background: var(--surface-2); }
   #filesTable tbody tr.row-selected td.td-actions { background: var(--accent-dim); }
-  #filesTable tbody tr.row-renamed  td.td-actions { background: rgba(52,211,153,.06); }
+  #filesTable tbody tr.row-renamed  td.td-actions { background: color-mix(in srgb, var(--green) 6%, transparent); }
 
   #filesTable tbody tr {
     border-bottom: 1px solid var(--border);
@@ -333,7 +330,7 @@
   #filesTable tbody tr:hover { background: var(--surface-2); }
 
   #filesTable tbody tr.row-approved { border-left: 3px solid var(--accent); }
-  #filesTable tbody tr.row-renamed  { background: rgba(52,211,153,.04); border-left: 3px solid var(--green); }
+  #filesTable tbody tr.row-renamed  { background: color-mix(in srgb, var(--green) 4%, transparent); border-left: 3px solid var(--green); }
   #filesTable tbody tr.row-skipped  { opacity: .55; }
   #filesTable tbody tr.row-selected { background: var(--accent-dim) !important; }
 
@@ -406,9 +403,9 @@
   }
   .badge-pending  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
   .badge-pending::before { background: var(--text-muted); }
-  .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(249,115,22,.22); }
+  .badge-approved { background: var(--accent-dim); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
   .badge-approved::before { background: var(--accent); }
-  .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.22); }
+  .badge-renamed  { background: var(--green-bg); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 22%, transparent); }
   .badge-renamed::before { background: var(--green); }
   .badge-skipped  { background: rgba(255,255,255,.02); color: var(--text-dim); border: 1px solid var(--border); }
   .badge-skipped::before { background: var(--text-dim); }
@@ -417,15 +414,15 @@
     display: inline-block;
     margin-top: .25rem;
     padding: .12rem .45rem;
-    background: rgba(251,191,36,.1);
-    border: 1px solid rgba(251,191,36,.25);
+    background: var(--yellow-bg);
+    border: 1px solid color-mix(in srgb, var(--yellow) 25%, transparent);
     border-radius: 99px;
     font-size: .65rem;
     font-weight: 600;
     color: var(--yellow);
     text-decoration: none;
   }
-  .face-link:hover { background: rgba(251,191,36,.2); }
+  .face-link:hover { background: color-mix(in srgb, var(--yellow) 20%, transparent); }
 
   /* ─── TPDB badge ─── */
   .tpdb-badge {
@@ -436,17 +433,17 @@
     font-weight: 700;
     letter-spacing: .04em;
     color: var(--cyan, #67e8f9);
-    background: rgba(103, 232, 249, .08);
-    border: 1px solid rgba(103, 232, 249, .35);
+    background: var(--cyan-bg);
+    border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
     border-radius: 4px;
     font-family: ui-sans-serif, -apple-system, 'Helvetica Neue', system-ui, sans-serif;
     vertical-align: 1px;
   }
   .btn-tpdb {
     color: var(--cyan, #67e8f9);
-    border-color: rgba(103, 232, 249, .3);
+    border-color: color-mix(in srgb, var(--cyan) 30%, transparent);
   }
-  .btn-tpdb:hover { background: rgba(103, 232, 249, .08); }
+  .btn-tpdb:hover { background: var(--cyan-bg); }
 
   /* ─── Checkbox ────────────────────────────── */
   input[type="checkbox"] {
@@ -465,7 +462,7 @@
     gap: .65rem;
     padding: .65rem 1rem;
     background: var(--surface-2);
-    border: 1px solid rgba(249,115,22,.25);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
     border-radius: var(--radius);
     box-shadow: 0 8px 28px rgba(0,0,0,.5);
     margin: 1rem 0;
@@ -502,12 +499,12 @@
     justify-content: space-between;
     padding: .85rem 1.15rem;
     background: var(--surface);
-    border: 1px solid rgba(52,211,153,.22);
+    border: 1px solid color-mix(in srgb, var(--green) 22%, transparent);
     border-radius: var(--radius);
     cursor: pointer;
   }
   .rename-header.has-approved {
-    box-shadow: 0 0 18px rgba(52,211,153,.08);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--green) 8%, transparent);
   }
   .rename-header-left {
     display: flex;
@@ -585,8 +582,8 @@
     pointer-events: auto;
     animation: toast-in .25s ease;
   }
-  .toast.ok  { border-color: rgba(52,211,153,.4); color: var(--green); }
-  .toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
+  .toast.ok  { border-color: color-mix(in srgb, var(--green) 40%, transparent); color: var(--green); }
+  .toast.err { border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); }
   @keyframes toast-in {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -624,9 +621,9 @@
   .face-status-file { font-size: .72rem; color: var(--text-muted); margin-bottom: .35rem; font-family: monospace; min-width: 0; }
   .face-status-file > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .face-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
-  .face-status-dot.running { background: #22c55e; box-shadow: 0 0 0 2px #22c55e33; animation: pulse 1.5s infinite; }
-  .face-status-error { font-size: .72rem; color: #ef4444; margin-top: .2rem; }
-  .face-status-row.warning { color: #f59e0b; font-weight: 500; }
+  .face-status-dot.running { background: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 20%, transparent); animation: pulse 1.5s infinite; }
+  .face-status-error { font-size: .72rem; color: var(--red); margin-top: .2rem; }
+  .face-status-row.warning { color: var(--yellow); font-weight: 500; }
   .face-workers-label { font-size: .72rem; color: var(--text-muted); display: flex; align-items: center; gap: .3rem; cursor: default; }
   .face-workers-select { font-size: .72rem; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; color: var(--text); padding: 1px 3px; cursor: pointer; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
@@ -705,7 +702,7 @@
       background: var(--surface);
     }
     #filesTable tbody tr.row-approved { border-left-color: var(--accent); }
-    #filesTable tbody tr.row-renamed  { border-left-color: var(--green); background: rgba(52,211,153,.04); }
+    #filesTable tbody tr.row-renamed  { border-left-color: var(--green); background: color-mix(in srgb, var(--green) 4%, transparent); }
     #filesTable tbody tr.row-skipped  { opacity: .55; }
     #filesTable tbody tr:hover        { background: var(--surface-2); }
 
@@ -891,7 +888,7 @@
         <!-- Stats row -->
         {% set sel_mount = (mounts | selectattr('name','equalto',selected_mount) | first) %}
         <div class="stats-row" data-selected-mount="{{ selected_mount }}">
-          <div class="stat-card c-blue">
+          <div class="stat-card c-accent">
             <div class="stat-card-lbl">Total files</div>
             <div class="stat-card-val" id="stat-total">{{ (sel_mount.total if sel_mount else total_files) }}</div>
           </div>

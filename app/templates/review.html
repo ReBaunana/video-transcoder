@@ -57,45 +57,45 @@
   .btn-bulk-accept {
     padding: .35rem .9rem;
     border-radius: .4rem;
-    border: 1px solid rgba(74,222,128,.35);
-    background: rgba(74,222,128,.08);
+    border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+    background: var(--green-bg);
     color: var(--green);
     font-size: .78rem;
     cursor: pointer;
   }
-  .btn-bulk-accept:hover { background: rgba(74,222,128,.18); }
+  .btn-bulk-accept:hover { background: color-mix(in srgb, var(--green) 18%, transparent); }
   .btn-bulk-reject-males {
     padding: .35rem .9rem;
     border-radius: .4rem;
-    border: 1px solid rgba(248,113,113,.35);
-    background: rgba(248,113,113,.08);
+    border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+    background: var(--red-bg);
     color: var(--red);
     font-size: .78rem;
     cursor: pointer;
   }
-  .btn-bulk-reject-males:hover { background: rgba(248,113,113,.18); }
+  .btn-bulk-reject-males:hover { background: color-mix(in srgb, var(--red) 18%, transparent); }
   .btn-bulk-rescan {
     padding: .35rem .9rem;
     border-radius: .4rem;
-    border: 1px solid rgba(148,163,184,.35);
-    background: rgba(148,163,184,.08);
+    border: 1px solid var(--border-hover);
+    background: var(--surface-2);
     color: var(--text-muted);
     font-size: .78rem;
     cursor: pointer;
   }
-  .btn-bulk-rescan:hover { background: rgba(148,163,184,.18); color: var(--text); }
+  .btn-bulk-rescan:hover { background: var(--surface-3); color: var(--text); }
   .btn-delete-all {
     margin-left: auto;
     padding: .4rem 1.1rem;
     border-radius: .4rem;
-    border: 1px solid rgba(248,113,113,.6);
-    background: rgba(248,113,113,.12);
+    border: 1px solid color-mix(in srgb, var(--red) 60%, transparent);
+    background: color-mix(in srgb, var(--red) 12%, transparent);
     color: var(--red);
     font-size: .8rem;
     font-weight: 600;
     cursor: pointer;
   }
-  .btn-delete-all:hover { background: rgba(248,113,113,.28); }
+  .btn-delete-all:hover { background: color-mix(in srgb, var(--red) 28%, transparent); }
 
   .rq-kbd-hint {
     display: flex;
@@ -164,8 +164,8 @@
   .ambiguous-badge {
     margin: .4rem 1rem .7rem;
     padding: .35rem .7rem;
-    background: rgba(251,191,36,.08);
-    border: 1px solid rgba(251,191,36,.25);
+    background: var(--yellow-bg);
+    border: 1px solid color-mix(in srgb, var(--yellow) 25%, transparent);
     border-radius: var(--radius-sm);
     font-size: .7rem;
     color: var(--yellow);
@@ -185,7 +185,7 @@
     transition: border-color .15s;
   }
   .candidate-card:hover { border-color: var(--border-hover); }
-  .candidate-card.accepted { border-color: rgba(52,211,153,.35); background: var(--green-bg); }
+  .candidate-card.accepted { border-color: color-mix(in srgb, var(--green) 35%, transparent); background: var(--green-bg); }
   .candidate-card.rejected { border-color: var(--border); opacity: .45; }
 
   .candidate-header {
@@ -219,7 +219,7 @@
     border: 1px solid var(--border);
     color: var(--text-muted);
   }
-  .gender-badge.female { color: #f472b6; border-color: rgba(244,114,182,.3); background: rgba(244,114,182,.06); }
+  .gender-badge.female { color: var(--pink); border-color: color-mix(in srgb, var(--pink) 30%, transparent); background: var(--pink-bg); }
 
   /* similarity + match_count stats */
   .candidate-stats {
@@ -270,7 +270,7 @@
     background: var(--surface-3);
     flex-shrink: 0;
   }
-  .thumb-img.profile { border-color: rgba(249,115,22,.3); }
+  .thumb-img.profile { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
   .thumb-placeholder {
     width: 72px;
     height: 72px;
@@ -294,7 +294,7 @@
   }
   .btn-accept {
     background: var(--green-bg);
-    border: 1px solid rgba(52,211,153,.3);
+    border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
     color: var(--green);
     padding: .4rem .9rem;
     border-radius: var(--radius-sm);
@@ -307,7 +307,7 @@
     gap: .35rem;
     transition: background-color .15s, border-color .15s, box-shadow .15s;
   }
-  .btn-accept:hover { background: rgba(52,211,153,.15); border-color: rgba(52,211,153,.5); }
+  .btn-accept:hover { background: color-mix(in srgb, var(--green) 15%, transparent); border-color: color-mix(in srgb, var(--green) 50%, transparent); }
   .btn-accept:disabled { opacity:.4; cursor:not-allowed; }
   .btn-reject-single {
     background: transparent;
@@ -321,7 +321,7 @@
     font-family: inherit;
     transition: background-color .15s, border-color .15s, color .15s;
   }
-  .btn-reject-single:hover { border-color: rgba(248,113,113,.3); color: var(--red); }
+  .btn-reject-single:hover { border-color: color-mix(in srgb, var(--red) 30%, transparent); color: var(--red); }
   .btn-reject-single:disabled { opacity:.4; cursor:not-allowed; }
 
   /* ── Footer actions ─────────────────────────── */
@@ -333,7 +333,7 @@
   }
   .btn-reject-all {
     background: var(--red-bg);
-    border: 1px solid rgba(248,113,113,.25);
+    border: 1px solid color-mix(in srgb, var(--red) 25%, transparent);
     color: var(--red);
     padding: .42rem .9rem;
     border-radius: var(--radius-sm);
@@ -343,7 +343,7 @@
     font-family: inherit;
     transition: background-color .15s, border-color .15s, color .15s;
   }
-  .btn-reject-all:hover { background: rgba(248,113,113,.15); border-color: rgba(248,113,113,.45); }
+  .btn-reject-all:hover { background: color-mix(in srgb, var(--red) 15%, transparent); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
   .btn-skip {
     background: var(--surface-2);
     border: 1px solid var(--border);
@@ -392,8 +392,8 @@
     align-items: center;
     gap: .5rem;
   }
-  .toast.ok { border-color: rgba(52,211,153,.3); color: var(--green); }
-  .toast.err { border-color: rgba(248,113,113,.3); color: var(--red); }
+  .toast.ok { border-color: color-mix(in srgb, var(--green) 30%, transparent); color: var(--green); }
+  .toast.err { border-color: color-mix(in srgb, var(--red) 30%, transparent); color: var(--red); }
 </style>
 {% endblock %}
 
