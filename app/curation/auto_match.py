@@ -196,3 +196,130 @@ def build_proposed_filename(
     raise RuntimeError(
         f"Could not find unique filename after {MAX_COLLISIONS} attempts for fc_id={fc_id}"
     )
+
+
+def phase1(conn: sqlite3.Connection) -> int:
+    """Match unknown files against existing performers by filename.
+
+    Returns count of files matched.
+    Only processes files with no performer already assigned.
+    """
+    performers: list[tuple[int, str, list[str]]] = []
+    for row in conn.execute("SELECT id, canonical_name FROM performer ORDER BY id"):
+        aliases = [r[0] for r in conn.execute(
+            "SELECT alias FROM performer_alias WHERE performer_id = ?", (row[0],)
+        )]
+        performers.append((row[0], row[1], aliases))
+
+    matched = 0
+    rows = conn.execute(
+        """SELECT fc.id, fc.path FROM file_curation fc
+            WHERE fc.status = 'unknown'
+              AND NOT EXISTS (
+                  SELECT 1 FROM file_performer fp WHERE fp.file_curation_id = fc.id
+              )"""
+    ).fetchall()
+
+    for fc_id, path in rows:
+        try:
+            norm = normalize_stem(path)
+            hits = match_existing_performers(norm, performers)
+            if not hits:
+                continue
+            for pos, (p_id, _) in enumerate(hits):
+                conn.execute(
+                    "INSERT OR IGNORE INTO file_performer "
+                    "(file_curation_id, performer_id, position, source) VALUES (?,?,?,'filename')",
+                    (fc_id, p_id, pos),
+                )
+            p_names = [h[1] for h in hits]
+            proposed = build_proposed_filename(conn, fc_id, p_names, path)
+            conn.execute(
+                "UPDATE file_curation SET proposed_filename=?, status='approved', "
+                "updated_at=datetime('now') "
+                "WHERE id=? AND status NOT IN ('renamed','skipped')",
+                (proposed, fc_id),
+            )
+            matched += 1
+            if matched % 100 == 0:
+                conn.commit()
+        except Exception:
+            log.exception('phase1: skipping fc_id=%s path=%s', fc_id, path)
+
+    conn.commit()
+    return matched
+
+
+def phase2(conn: sqlite3.Connection) -> tuple[int, list[str]]:
+    """Extract new performer names from filenames of still-unknown files.
+
+    Returns (count_matched, list_of_new_performer_canonical_names).
+    Only processes files with no performer already assigned.
+    """
+    created_names: list[str] = []
+    matched = 0
+
+    rows = conn.execute(
+        """SELECT fc.id, fc.path FROM file_curation fc
+            WHERE fc.status = 'unknown'
+              AND NOT EXISTS (
+                  SELECT 1 FROM file_performer fp WHERE fp.file_curation_id = fc.id
+              )"""
+    ).fetchall()
+
+    for fc_id, path in rows:
+        try:
+            name = extract_new_performer_name(path)
+            if not name:
+                continue
+            slug = slugify(name)
+            row = conn.execute(
+                "SELECT id FROM performer WHERE slug = ?", (slug,)
+            ).fetchone()
+            if row:
+                p_id = row[0]
+            else:
+                conn.execute(
+                    "INSERT INTO performer (canonical_name, slug, gender) VALUES (?,?,'unknown')",
+                    (name, slug),
+                )
+                p_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                created_names.append(name)
+            conn.execute(
+                "INSERT OR IGNORE INTO file_performer "
+                "(file_curation_id, performer_id, position, source) VALUES (?,?,0,'filename')",
+                (fc_id, p_id),
+            )
+            proposed = build_proposed_filename(conn, fc_id, [name], path)
+            conn.execute(
+                "UPDATE file_curation SET proposed_filename=?, status='approved', "
+                "updated_at=datetime('now') "
+                "WHERE id=? AND status NOT IN ('renamed','skipped')",
+                (proposed, fc_id),
+            )
+            matched += 1
+            if matched % 100 == 0:
+                conn.commit()
+        except Exception:
+            log.exception('phase2: skipping fc_id=%s path=%s', fc_id, path)
+
+    conn.commit()
+    return matched, created_names
+
+
+def run_auto_match(conn: sqlite3.Connection) -> dict:
+    """Run phases 1 and 2 and return a summary dict.
+
+    Returned keys: phase1 (int), phase2 (int), new_performers (int),
+                   new_performer_names (list[str]).
+    """
+    n1 = phase1(conn)
+    n2, names = phase2(conn)
+    if names:
+        log.info('auto_match: new performers created: %s', ', '.join(sorted(names)))
+    return {
+        'phase1': n1,
+        'phase2': n2,
+        'new_performers': len(names),
+        'new_performer_names': names,
+    }
