@@ -114,8 +114,8 @@ def extract_new_performer_name(path: str) -> str | None:
     if re.match(r'^\d', first_part):
         return None
 
-    first_part = QUALITY_RE.sub('', first_part)
-    first_part = DATE_RE.sub('', first_part)
+    first_part = QUALITY_RE.sub(' ', first_part)
+    first_part = DATE_RE.sub(' ', first_part)
     first_part = re.sub(r'[^\w\s]', ' ', first_part)
     first_part = re.sub(r'\s+', ' ', first_part).strip()
 
@@ -163,6 +163,7 @@ def slugify(name: str) -> str:
 
 
 def build_proposed_filename_str(performer_names: list[str], path: str) -> str:
+    """Build the proposed filename string without collision checking."""
     ext = os.path.splitext(path)[1].lower() or '.mp4'
     stem = os.path.splitext(os.path.basename(path))[0]
     safe_stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', stem).strip('._')
@@ -191,6 +192,7 @@ def build_proposed_filename(
             return proposed
         proposed = f"{base_stem}_{counter}{base_ext}"
         counter += 1
+    log.error('build_proposed_filename: exhausted %d collision attempts for fc_id=%s', MAX_COLLISIONS, fc_id)
     raise RuntimeError(
         f"Could not find unique filename after {MAX_COLLISIONS} attempts for fc_id={fc_id}"
     )
