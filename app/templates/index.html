@@ -899,7 +899,7 @@
     font-size: .75rem;
     font-weight: 600;
     color: var(--text-muted);
-    transition: all .15s;
+    transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s;
   }
   .toggle-btn::before {
     content: '';
@@ -907,7 +907,7 @@
     border-radius: 50%;
     background: var(--text-dim);
     flex-shrink: 0;
-    transition: all .15s;
+    transition: background-color .15s, box-shadow .15s;
   }
   .toggle-btn.active {
     background: var(--red-bg);
@@ -1148,7 +1148,7 @@
     color: var(--text-muted);
     font-family: inherit;
     letter-spacing: .02em;
-    transition: all .12s;
+    transition: background-color .12s, border-color .12s, color .12s;
   }
   .filter-pill:hover { border-color: var(--border-hover); color: var(--text); }
   .filter-pill.fp-active { background: var(--surface-3); border-color: var(--border-hover); color: var(--text); }
