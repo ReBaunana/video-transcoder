@@ -430,6 +430,64 @@ def _run_auto_rename(db_path: str) -> None:
                 pass
 
 
+def _run_curation_scan(db_path: str, mount: str) -> None:
+    """Scheduled discovery scan for an inbox mount (e.g. jdownloader).
+
+    Walks /media/<mount>/ and upserts any new video files into file_curation.
+    New files land as 'unknown' (opaque filename) or 'pending' (parseable).
+    """
+    _log = logging.getLogger('scheduler.curation_scan')
+    conn = None
+    try:
+        from app.curation.extractor import scan_mount
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        mount_path = f'/media/{mount}'
+        result = scan_mount(conn, mount_path, mount)
+        conn.commit()
+        _log.info(
+            'curation scan %s: total=%d parsed=%d opaque=%d errors=%d',
+            mount, result.get('total', 0), result.get('parsed', 0),
+            result.get('opaque', 0), result.get('errors', 0),
+        )
+    except Exception:
+        _log.exception('_run_curation_scan crashed (mount=%s)', mount)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _run_auto_match(db_path: str) -> None:
+    """Scheduled filename-based performer matching for unknown files.
+
+    Runs phase1 (existing performers) and phase2 (new performers from filename).
+    Phase3 (face rec) is handled by _run_auto_rename; phase4 (re-enqueue) by
+    the face worker sweep.
+    """
+    _log = logging.getLogger('scheduler.auto_match')
+    conn = None
+    try:
+        from app.curation.auto_match import run_auto_match
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        result = run_auto_match(conn)
+        _log.info(
+            'auto_match: phase1=%d phase2=%d new_performers=%d',
+            result['phase1'], result['phase2'], result['new_performers'],
+        )
+    except Exception:
+        _log.exception('_run_auto_match crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 @app.on_event('shutdown')
 async def shutdown():
     """Stop background workers cleanly so the container shuts down quickly."""
@@ -459,6 +517,8 @@ def _start_scheduler():
         last_tpdb_batch_ts = 0.0    # fire on first tick
         last_face_enqueue_ts = 0.0  # fire on first tick
         last_auto_rename_ts = 0.0   # fire on first tick
+        last_curation_scan_ts = 0.0   # fire on first tick
+        last_auto_match_ts = 0.0      # fire on first tick
         db_path_str = str(DB_PATH)
 
         while True:
@@ -514,6 +574,26 @@ def _start_scheduler():
                     target=_run_auto_rename,
                     args=(db_path_str,),
                     name='sched-auto-rename',
+                    daemon=True,
+                ).start()
+
+            # Curation scan: discover new files in jdownloader every 60 min.
+            if (now_ts - last_curation_scan_ts) >= 60 * 60:
+                last_curation_scan_ts = now_ts
+                threading.Thread(
+                    target=_run_curation_scan,
+                    args=(db_path_str, 'jdownloader'),
+                    name='sched-curation-scan',
+                    daemon=True,
+                ).start()
+
+            # Auto-match: assign performers to unknown files via filename every 60 min.
+            if (now_ts - last_auto_match_ts) >= 60 * 60:
+                last_auto_match_ts = now_ts
+                threading.Thread(
+                    target=_run_auto_match,
+                    args=(db_path_str,),
+                    name='sched-auto-match',
                     daemon=True,
                 ).start()
 
