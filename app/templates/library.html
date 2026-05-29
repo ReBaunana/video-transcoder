@@ -23,8 +23,8 @@
   /* ─── Mount sidebar ────────────────────────────── */
   .mounts-sidebar {
     position: sticky;
-    top: calc(var(--topbar-h, 84px) + .6rem);
-    max-height: calc(100vh - var(--topbar-h, 84px) - 2rem);
+    top: calc(var(--topbar-h, 56px) + .6rem);
+    max-height: calc(100vh - var(--topbar-h, 56px) - 2rem);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -241,7 +241,7 @@
   .tbl-wrap {
     overflow-x: auto;
     overflow-y: auto;
-    max-height: calc(100vh - var(--topbar-h, 84px) - 320px);
+    max-height: calc(100vh - var(--topbar-h, 56px) - 320px);
     min-height: 300px;
     position: relative;
     scrollbar-gutter: stable;
@@ -249,7 +249,6 @@
     scrollbar-width: thin;
     scrollbar-color: var(--border-hover) transparent;
   }
-  .tbl-wrap::-webkit-scrollbar { width: 7px; height: 7px; }
   .tbl-wrap::-webkit-scrollbar-track { background: transparent; }
   .tbl-wrap::-webkit-scrollbar-thumb {
     background: var(--border-hover);
@@ -319,8 +318,8 @@
     box-shadow: -8px 0 12px -8px rgba(0,0,0,.35);
   }
   #filesTable tbody tr:hover td.td-actions { background: var(--surface-2); }
-  #filesTable tbody tr.row-selected td.td-actions { background: var(--accent-dim); }
-  #filesTable tbody tr.row-renamed  td.td-actions { background: color-mix(in srgb, var(--green) 6%, transparent); }
+  #filesTable tbody tr.row-selected td.td-actions { background: var(--row-selected-bg, var(--accent-dim)); }
+  #filesTable tbody tr.row-renamed  td.td-actions { background: var(--row-renamed-bg, var(--surface)); }
 
   #filesTable tbody tr {
     border-bottom: 1px solid var(--border);

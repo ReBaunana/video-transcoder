@@ -39,6 +39,9 @@
       --bg-translucent:   rgba(8,8,16,.88);
       --bg-translucent-2: rgba(8,8,16,.92);
       --font-mono:        ui-monospace, 'SF Mono', Menlo, monospace;
+      --topbar-h:         56px;
+      --row-renamed-bg:   rgba(52,211,153,.06);
+      --row-selected-bg:  rgba(249,115,22,.15);
     }
 
     @media (prefers-color-scheme: light) {
@@ -50,7 +53,7 @@
         --border:           rgba(80,90,160,.10);
         --border-hover:     rgba(80,90,160,.20);
         --text:             #1a1c30;
-        --text-muted:       #7880aa;
+        --text-muted:       #5a6190;
         --text-dim:         #b4b9d4;
         --accent:           #ea580c;
         --accent-dim:       rgba(234,88,12,.12);
@@ -68,6 +71,8 @@
         --pink-bg:          rgba(219,39,119,.06);
         --bg-translucent:   rgba(240,241,248,.92);
         --bg-translucent-2: rgba(240,241,248,.95);
+        --row-renamed-bg:   rgba(14,168,105,.06);
+        --row-selected-bg:  rgba(234,88,12,.12);
       }
     }
 
@@ -79,7 +84,7 @@
       --border:           rgba(80,90,160,.10);
       --border-hover:     rgba(80,90,160,.20);
       --text:             #1a1c30;
-      --text-muted:       #7880aa;
+      --text-muted:       #5a6190;
       --text-dim:         #b4b9d4;
       --accent:           #ea580c;
       --accent-dim:       rgba(234,88,12,.12);
@@ -97,6 +102,8 @@
       --pink-bg:          rgba(219,39,119,.06);
       --bg-translucent:   rgba(240,241,248,.92);
       --bg-translucent-2: rgba(240,241,248,.95);
+      --row-renamed-bg:   rgba(14,168,105,.06);
+      --row-selected-bg:  rgba(234,88,12,.12);
     }
 
     [data-theme="dark"] {
@@ -145,7 +152,7 @@
       -moz-osx-font-smoothing: grayscale;
     }
 
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
 
