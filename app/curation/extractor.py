@@ -657,9 +657,14 @@ def build_target_filename(result: ParseResult) -> str:
 def _iter_video_files(root: str) -> Iterable[str]:
     for dirpath, _dirs, files in os.walk(root):
         for fn in files:
-            ext = os.path.splitext(fn)[1].lower()
-            if ext in VIDEO_EXTENSIONS:
-                yield os.path.join(dirpath, fn)
+            stem, ext = os.path.splitext(fn)
+            if ext.lower() not in VIDEO_EXTENSIONS:
+                continue
+            # Skip in-progress transcode temp files ("<stem>.transcoding<ext>")
+            # so a scan running mid-encode never persists them as real videos.
+            if stem.lower().endswith(".transcoding"):
+                continue
+            yield os.path.join(dirpath, fn)
 
 
 def scan_mount(
