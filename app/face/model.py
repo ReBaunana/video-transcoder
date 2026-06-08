@@ -88,6 +88,23 @@ def get_face_app():
     return _app
 
 
+def get_det_and_rec():
+    """Return (detection_model, recognition_model) from the singleton.
+
+    Used by the batched extraction path, which runs detection per frame and
+    embedding (ArcFace ``get_feat``) over a batch of aligned crops in one GPU
+    call — far fewer kernel launches than ``app.get()`` per image, and it skips
+    the landmark/genderage models that the recognition path doesn't need.
+    Embeddings are bit-identical to ``app.get()`` (verified), so the existing
+    index stays valid.
+    """
+    app = get_face_app()
+    rec = app.models["recognition"]
+    if getattr(rec, "input_size", None) is None:
+        rec.input_size = (112, 112)
+    return app.det_model, rec
+
+
 def reset_face_app() -> None:
     """Drop the singleton so the next call reloads ONNX sessions.
 

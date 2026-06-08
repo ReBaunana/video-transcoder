@@ -229,66 +229,119 @@ def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np
     return all_frames
 
 
-def detect_faces(img: np.ndarray) -> list[dict]:
-    """Run InsightFace detection on one image.
+EMBED_BATCH_SIZE = int(os.environ.get("FACE_EMBED_BATCH", "64"))
 
-    Returns list of {embedding, det_score, bbox, normed_embedding}.
-    Returns [] for crowd scenes (>MAX_FACES_PER_FRAME).
+
+def _detect_only(det, img: np.ndarray) -> list[dict]:
+    """Detect faces in one image; return survivors as {bbox, kps, det_score}.
+
+    GPU detection runs under _gpu_lock; the per-face filtering is CPU and stays
+    outside the lock. Mirrors the old detect_faces gating exactly: a frame with
+    more than MAX_FACES_PER_FRAME detections is dropped as a crowd scene, then
+    faces below MIN_DET_SCORE or smaller than MIN_FACE_PIXELS are discarded.
     """
     try:
-        app = get_face_app()
-    except Exception:
-        log.exception("detect_faces: face app unavailable")
-        return []
-
-    try:
-        # Serialize ONNX session calls across worker threads — concurrent
-        # CUDA inference on the same session corrupts state.
         with _gpu_lock:
-            faces = app.get(img)
+            bboxes, kpss = det.detect(img, max_num=0, metric="default")
     except Exception:
-        log.exception("detect_faces: insightface .get() failed")
+        log.exception("_detect_only: detection failed")
         return []
-
-    if not faces:
+    if bboxes is None or len(bboxes) == 0:
         return []
-    if len(faces) > MAX_FACES_PER_FRAME:
+    if len(bboxes) > MAX_FACES_PER_FRAME:
         return []  # crowd scene — skip entirely
-
-    results: list[dict] = []
-    for f in faces:
-        det_score = float(getattr(f, "det_score", 0.0))
+    out: list[dict] = []
+    for j in range(len(bboxes)):
+        det_score = float(bboxes[j][4])
         if det_score < MIN_DET_SCORE:
             continue
-
-        bbox_raw = getattr(f, "bbox", None)
-        if bbox_raw is None:
+        x1, y1, x2, y2 = [float(v) for v in bboxes[j][:4]]
+        if (x2 - x1) < MIN_FACE_PIXELS or (y2 - y1) < MIN_FACE_PIXELS:
             continue
-        bbox = [float(v) for v in np.asarray(bbox_raw).reshape(-1)[:4]]
-        x1, y1, x2, y2 = bbox
-        w, h = max(0.0, x2 - x1), max(0.0, y2 - y1)
-        if w < MIN_FACE_PIXELS or h < MIN_FACE_PIXELS:
-            continue
+        out.append({"bbox": [x1, y1, x2, y2], "kps": kpss[j], "det_score": det_score})
+    return out
 
-        emb = getattr(f, "embedding", None)
-        if emb is None:
-            continue
-        emb = np.asarray(emb, dtype=np.float32).reshape(-1)
 
-        normed = getattr(f, "normed_embedding", None)
-        if normed is None:
+def extract_faces_batched(frames: list[tuple[float, np.ndarray]]):
+    """Detect per frame, embed all crops in batches. One GPU stream, few launches.
+
+    Returns a list aligned with ``frames``: ``[(t, img, [face, ...]), ...]`` where
+    each face is ``{embedding, normed_embedding, det_score, bbox}`` — the same
+    shape the old per-frame detect_faces returned. Embeddings are bit-identical
+    to ``app.get()`` (recognition model + alignment are unchanged), so the
+    existing face_embedding index stays valid: NO re-seeding needed.
+    """
+    try:
+        from app.face.model import get_det_and_rec
+        import insightface.utils.face_align as face_align
+        det, rec = get_det_and_rec()
+        align_fn = lambda img, kps: face_align.norm_crop(img, kps, image_size=112)
+    except Exception:
+        log.exception("extract_faces_batched: face app unavailable")
+        return [(t, img, []) for (t, img) in frames]
+    return _extract_faces_core(frames, det, rec, align_fn)
+
+
+def _extract_faces_core(frames, det, rec, align_fn):
+    """Pure orchestration (detect → align → batch-embed → distribute).
+
+    Separated from model wiring so the filtering and batch-distribution logic is
+    unit-testable with fakes. ``det.detect(img)`` -> (bboxes[N,5], kpss[N,5,2]);
+    ``rec.get_feat(list_of_crops)`` -> (M,512); ``align_fn(img, kps)`` -> crop.
+    """
+    # Phase 1 — detect every frame, align survivors (CPU), build a flat crop list.
+    per_frame: list[list[dict]] = []
+    flat_crops: list[np.ndarray] = []
+    flat_ptr: list[tuple[int, int]] = []  # (frame_idx, face_idx)
+    for fi, (_t, img) in enumerate(frames):
+        metas = _detect_only(det, img)
+        kept: list[dict] = []
+        for m in metas:
+            try:
+                crop = align_fn(img, m["kps"])
+            except Exception:
+                continue
+            flat_crops.append(crop)
+            flat_ptr.append((fi, len(kept)))
+            kept.append({"bbox": m["bbox"], "det_score": m["det_score"]})
+        per_frame.append(kept)
+
+    # Phase 2 — batched embedding (one GPU call per EMBED_BATCH_SIZE crops).
+    for k in range(0, len(flat_crops), EMBED_BATCH_SIZE):
+        chunk = flat_crops[k:k + EMBED_BATCH_SIZE]
+        try:
+            with _gpu_lock:
+                embs = rec.get_feat(chunk)
+        except Exception:
+            log.exception("extract_faces_batched: get_feat failed")
+            embs = None
+        for off in range(len(chunk)):
+            fi, fj = flat_ptr[k + off]
+            face = per_frame[fi][fj]
+            if embs is None:
+                face["embedding"] = None
+                continue
+            emb = np.asarray(embs[off], dtype=np.float32).reshape(-1)
             n = float(np.linalg.norm(emb))
-            normed = (emb / n) if n > 0 else emb
-        normed = np.asarray(normed, dtype=np.float32).reshape(-1)
+            face["embedding"] = emb
+            face["normed_embedding"] = (emb / n) if n > 0 else emb
 
-        results.append({
-            "embedding": emb,
-            "normed_embedding": normed,
-            "det_score": det_score,
-            "bbox": bbox,
-        })
-
+    # Drop faces whose embedding failed.
+    results = []
+    for fi, (t, img) in enumerate(frames):
+        faces = [f for f in per_frame[fi] if f.get("embedding") is not None]
+        results.append((t, img, faces))
     return results
+
+
+def detect_faces(img: np.ndarray) -> list[dict]:
+    """Single-image face detection+embedding (backward-compatible wrapper).
+
+    Returns list of {embedding, normed_embedding, det_score, bbox}; [] for crowd
+    scenes. Prefer extract_faces_batched() for multi-frame work — it batches the
+    embedding step. This wrapper keeps existing callers and tests working.
+    """
+    return extract_faces_batched([(0.0, img)])[0][2]
 
 
 def compute_quality_score(img: np.ndarray, bbox: list) -> float:
@@ -370,10 +423,9 @@ def process_video_for_seeding(
         log.info("seeding: no frames extracted file_id=%s", file_curation_id)
         return 0
 
-    # Step 1+2: detect; keep only frames with exactly 1 face.
+    # Step 1+2: detect (batched embedding); keep only frames with exactly 1 face.
     candidates: list[dict] = []
-    for t, img in frames:
-        faces = detect_faces(img)
+    for t, img, faces in extract_faces_batched(frames):
         if len(faces) != 1:
             continue
         f = faces[0]
@@ -492,8 +544,7 @@ def process_video_for_matching(
         return []
 
     out: list[dict] = []
-    for t, img in frames:
-        faces = detect_faces(img)
+    for t, img, faces in extract_faces_batched(frames):
         for f in faces:
             q = compute_quality_score(img, f["bbox"])
             if q <= QUALITY_KEEP_THRESHOLD:
