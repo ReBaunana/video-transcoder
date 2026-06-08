@@ -1143,3 +1143,51 @@ async def library_face_enqueue_all(request: Request):
         log.exception('enqueue_all_unknown failed')
         return JSONResponse({'ok': False, 'error': str(exc), 'enqueued': 0}, status_code=500)
     return JSONResponse({'ok': True, 'enqueued': int(enqueued)})
+
+
+# ---------------------------------------------------------------------------
+# Watermark-URL OCR identification
+# ---------------------------------------------------------------------------
+
+@router.get('/watermark/pending')
+async def watermark_pending(request: Request):
+    """Distinct unmapped watermark keys with file counts — map each once."""
+    from app.curation import watermark
+    try:
+        return JSONResponse({'ok': True, 'pending': watermark.pending_mappings(_db(request))})
+    except Exception as exc:
+        log.exception('watermark_pending failed')
+        return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
+
+
+@router.post('/watermark/map')
+async def watermark_map(request: Request):
+    """Map a watermark key (URL/handle) to a performer; auto-assigns waiting files."""
+    from app.curation import watermark
+    body = await _read_json(request)
+    key = (body.get('url_key') or '').strip()
+    performer_id = body.get('performer_id')
+    if not key or performer_id is None:
+        raise HTTPException(status_code=400, detail='url_key and performer_id required')
+    try:
+        assigned = watermark.map_url(_db(request), key, int(performer_id))
+    except Exception as exc:
+        log.exception('watermark_map failed')
+        return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
+    return JSONResponse({'ok': True, 'assigned': assigned})
+
+
+@router.post('/watermark/run')
+async def watermark_run(request: Request):
+    """Trigger a watermark-OCR batch now (default 40 files)."""
+    from app.curation import watermark
+    body = await _read_json(request)
+    limit = int(body.get('limit', 40))
+    if not watermark.ocr_available():
+        return JSONResponse({'ok': False, 'error': 'tesseract not available'}, status_code=503)
+    try:
+        result = watermark.run_watermark_ocr(_db(request), limit=limit)
+    except Exception as exc:
+        log.exception('watermark_run failed')
+        return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
+    return JSONResponse({'ok': True, 'result': result})

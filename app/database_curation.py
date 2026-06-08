@@ -141,6 +141,29 @@ CREATE TABLE IF NOT EXISTS rename_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rl_file ON rename_log(file_curation_id);
+
+CREATE TABLE IF NOT EXISTS performer_url (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    performer_id INTEGER NOT NULL REFERENCES performer(id) ON DELETE CASCADE,
+    url_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_purl_perf ON performer_url(performer_id);
+
+CREATE TABLE IF NOT EXISTS file_ocr_result (
+    file_curation_id INTEGER PRIMARY KEY REFERENCES file_curation(id) ON DELETE CASCADE,
+    url_key TEXT,
+    handle_key TEXT,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    performer_id INTEGER REFERENCES performer(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    raw_text TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_status ON file_ocr_result(status);
+CREATE INDEX IF NOT EXISTS idx_ocr_urlkey ON file_ocr_result(url_key);
 """
 
 

@@ -10,6 +10,7 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get inst
     python3 python3-pip ffmpeg tzdata \
     libva-drm2 libva2 intel-media-va-driver \
     intel-gpu-tools \
+    tesseract-ocr \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 

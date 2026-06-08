@@ -488,6 +488,30 @@ def _run_auto_match(db_path: str) -> None:
                 pass
 
 
+def _run_watermark_ocr(db_path: str) -> None:
+    """Scheduled watermark-URL OCR pass for generic-named unknown files.
+
+    Deterministic channel identification from burned-in profile URLs; assigns
+    files whose channel is already mapped, queues the rest for one-time mapping.
+    Runs only if tesseract is available; never touches face embeddings.
+    """
+    _log = logging.getLogger('scheduler.watermark_ocr')
+    conn = None
+    try:
+        from app.curation.watermark import run_watermark_ocr
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        result = run_watermark_ocr(conn, limit=40)
+        _log.info('watermark_ocr: %s', result)
+    except Exception:
+        _log.exception('_run_watermark_ocr crashed')
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 @app.on_event('shutdown')
 async def shutdown():
     """Stop background workers cleanly so the container shuts down quickly."""
@@ -519,6 +543,7 @@ def _start_scheduler():
         last_auto_rename_ts = 0.0   # fire on first tick
         last_curation_scan_ts = 0.0   # fire on first tick
         last_auto_match_ts = 0.0      # fire on first tick
+        last_watermark_ocr_ts = 0.0   # fire on first tick
         db_path_str = str(DB_PATH)
 
         while True:
@@ -594,6 +619,17 @@ def _start_scheduler():
                     target=_run_auto_match,
                     args=(db_path_str,),
                     name='sched-auto-match',
+                    daemon=True,
+                ).start()
+
+            # Watermark OCR: identify generic-named unknown files via burned-in
+            # profile URLs every 60 min (deterministic pre-step to face-rec).
+            if (now_ts - last_watermark_ocr_ts) >= 60 * 60:
+                last_watermark_ocr_ts = now_ts
+                threading.Thread(
+                    target=_run_watermark_ocr,
+                    args=(db_path_str,),
+                    name='sched-watermark-ocr',
                     daemon=True,
                 ).start()
 
