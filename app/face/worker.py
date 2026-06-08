@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -30,6 +31,12 @@ POLL_INTERVAL_SEC = 3.0
 MAX_ATTEMPTS = 3
 RESET_AFTER_N_JOBS = 50  # mitigate ONNX VRAM fragmentation
 DEFAULT_WORKERS = 3  # CPU extract + GPU detect overlap nicely with 2-3 threads
+
+# Once a performer is reference-ready with this many embeddings, seeding more of
+# their files adds nothing. Without this cap, enqueue_all_seed_known re-queues a
+# seed_known job (priority 10) for every file of well-seeded performers on each
+# scan/restart — flooding the queue and starving match_unknown (priority 100).
+SEED_REFERENCE_CAP = int(os.getenv("SEED_REFERENCE_CAP", "200"))
 
 # Initialize _n_workers now that DEFAULT_WORKERS is defined; gets overwritten in start_worker().
 _n_workers = DEFAULT_WORKERS
@@ -337,7 +344,9 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
 
     Includes 'renamed' files — a renamed file is a confirmed performer match and
     is a valid source of reference embeddings.
-    Skips files that already have a completed or in-progress seed_known job.
+    Skips files that already have a completed or in-progress seed_known job, and
+    files whose performer is already reference-ready with >= SEED_REFERENCE_CAP
+    embeddings (further seeding is redundant and would starve match_unknown).
     Priority 10 (runs before match_unknown at priority 100).
     """
     cur = conn.cursor()
@@ -347,15 +356,18 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
             SELECT fp.file_curation_id
               FROM file_performer fp
               JOIN file_curation fc ON fc.id = fp.file_curation_id
+              JOIN performer p ON p.id = fp.performer_id
              WHERE fc.status != 'skipped'
                AND fp.position = 0
+               AND NOT (p.is_reference_ready = 1 AND p.embedding_count >= ?)
                AND NOT EXISTS (
                    SELECT 1 FROM face_recognition_job j
                     WHERE j.file_curation_id = fp.file_curation_id
                       AND j.job_type = 'seed_known'
                       AND j.status IN ('pending', 'running', 'done')
                )
-            """
+            """,
+            (SEED_REFERENCE_CAP,),
         )
         ids = [int(r[0]) for r in cur.fetchall()]
     except Exception:
