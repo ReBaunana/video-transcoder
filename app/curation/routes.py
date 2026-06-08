@@ -1149,7 +1149,7 @@ async def library_face_enqueue_all(request: Request):
 # Watermark-URL OCR identification
 # ---------------------------------------------------------------------------
 
-@router.get('/watermark/pending')
+@router.get('/api/watermark/pending')
 async def watermark_pending(request: Request):
     """Distinct unmapped watermark keys with file counts — map each once."""
     from app.curation import watermark
@@ -1160,7 +1160,7 @@ async def watermark_pending(request: Request):
         return JSONResponse({'ok': False, 'error': str(exc)}, status_code=500)
 
 
-@router.post('/watermark/map')
+@router.post('/api/watermark/map')
 async def watermark_map(request: Request):
     """Map a watermark key (URL/handle) to a performer; auto-assigns waiting files."""
     from app.curation import watermark
@@ -1177,7 +1177,7 @@ async def watermark_map(request: Request):
     return JSONResponse({'ok': True, 'assigned': assigned})
 
 
-@router.post('/watermark/run')
+@router.post('/api/watermark/run')
 async def watermark_run(request: Request):
     """Trigger a watermark-OCR batch now (default 40 files)."""
     from app.curation import watermark
