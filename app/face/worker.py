@@ -414,8 +414,21 @@ def enqueue_all_seed_known(conn: sqlite3.Connection) -> int:
 
 
 def enqueue_seed_for_performer(conn: sqlite3.Connection, performer_id: int) -> int:
-    """Enqueue seed_known jobs for all single-performer files of this performer."""
+    """Enqueue seed_known jobs for all single-performer files of this performer.
+
+    Capped: a reference-ready performer with >= SEED_REFERENCE_CAP embeddings
+    needs no more seeding. This path is called from the auto-accept loop on
+    every match, so without the cap a high-frequency performer (e.g. Eliza with
+    60k embeddings) re-seeds all their files on each accept — a priority-10
+    flood that starves match_unknown.
+    """
     cur = conn.cursor()
+    cap_row = cur.execute(
+        "SELECT is_reference_ready, embedding_count FROM performer WHERE id = ?",
+        (performer_id,),
+    ).fetchone()
+    if cap_row and cap_row[0] == 1 and (cap_row[1] or 0) >= SEED_REFERENCE_CAP:
+        return 0
     try:
         cur.execute(
             """
