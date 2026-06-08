@@ -87,6 +87,30 @@ def test_batching_covers_all_when_over_batch_size(monkeypatch):
     assert all(f["embedding"] is not None for f in res[0][2])
 
 
+def test_oom_fallback_splits_to_single_crops():
+    """A rec that fails on batches >1 (simulating VRAM OOM) must still embed every
+    crop by splitting down to singles — no silent loss."""
+    det = FakeDet({1: [(BIG, 0.9)] * 4})
+
+    class FlakyRec:
+        def __init__(self):
+            self.batch_sizes = []
+
+        def get_feat(self, crops):
+            self.batch_sizes.append(len(crops))
+            if len(crops) > 1:
+                raise RuntimeError("simulated VRAM OOM")
+            out = np.zeros((1, 512), dtype=np.float32)
+            out[0, 0] = float(crops[0])
+            return out
+
+    rec = FlakyRec()
+    res = ex._extract_faces_core([(0.0, _img(1))], det, rec, _align)
+    assert len(res[0][2]) == 4
+    assert all(f["embedding"] is not None for f in res[0][2])  # nothing dropped
+    assert 1 in rec.batch_sizes  # did fall back to single crops
+
+
 def test_normed_embedding_is_unit_length():
     det = FakeDet({1: [(BIG, 0.9)]})
 
