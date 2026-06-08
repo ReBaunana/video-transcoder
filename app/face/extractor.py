@@ -229,7 +229,30 @@ def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np
     return all_frames
 
 
-EMBED_BATCH_SIZE = int(os.environ.get("FACE_EMBED_BATCH", "64"))
+# Crops per ArcFace get_feat() call. Kept small because the RTX 3050 Ti has only
+# 4 GB VRAM shared with the detection model + 3 concurrent worker detections —
+# batch 64 OOMs (~205 MB conv buffer). 8 leaves headroom; _embed_chunk halves
+# further on any allocation failure so an OOM never silently drops embeddings.
+# Tune up via FACE_EMBED_BATCH once VRAM headroom is confirmed.
+EMBED_BATCH_SIZE = int(os.environ.get("FACE_EMBED_BATCH", "8"))
+
+
+def _embed_chunk(rec, crops):
+    """Embed crops via get_feat; on failure (e.g. VRAM OOM) split and retry down
+    to a single crop. Returns a list of float32 embeddings, with None only for a
+    crop that fails even on its own. Guarantees no silent batch-size loss."""
+    if not crops:
+        return []
+    try:
+        with _gpu_lock:
+            embs = rec.get_feat(crops)
+        return [np.asarray(embs[i], dtype=np.float32).reshape(-1) for i in range(len(crops))]
+    except Exception:
+        if len(crops) == 1:
+            log.warning("_embed_chunk: single-crop get_feat failed — dropping")
+            return [None]
+        mid = len(crops) // 2
+        return _embed_chunk(rec, crops[:mid]) + _embed_chunk(rec, crops[mid:])
 
 
 def _detect_only(det, img: np.ndarray) -> list[dict]:
@@ -306,22 +329,17 @@ def _extract_faces_core(frames, det, rec, align_fn):
             kept.append({"bbox": m["bbox"], "det_score": m["det_score"]})
         per_frame.append(kept)
 
-    # Phase 2 — batched embedding (one GPU call per EMBED_BATCH_SIZE crops).
+    # Phase 2 — batched embedding (OOM-resilient: _embed_chunk splits on failure).
     for k in range(0, len(flat_crops), EMBED_BATCH_SIZE):
         chunk = flat_crops[k:k + EMBED_BATCH_SIZE]
-        try:
-            with _gpu_lock:
-                embs = rec.get_feat(chunk)
-        except Exception:
-            log.exception("extract_faces_batched: get_feat failed")
-            embs = None
+        embs = _embed_chunk(rec, chunk)
         for off in range(len(chunk)):
             fi, fj = flat_ptr[k + off]
             face = per_frame[fi][fj]
-            if embs is None:
+            emb = embs[off]
+            if emb is None:
                 face["embedding"] = None
                 continue
-            emb = np.asarray(embs[off], dtype=np.float32).reshape(-1)
             n = float(np.linalg.norm(emb))
             face["embedding"] = emb
             face["normed_embedding"] = (emb / n) if n > 0 else emb
