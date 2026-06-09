@@ -508,6 +508,22 @@ def process_video_for_seeding(
     """
     ensure_thumb_dir()
 
+    # Never build a face reference from a multi-performer (collab) file: a
+    # single-face frame in a collab can be ANY of the performers, so it poisons
+    # this performer's reference with other people's faces (the Bonnie Blue /
+    # Ana Lingus class of bug). Only solo-performer files are valid seed sources.
+    try:
+        n_perf = conn.execute(
+            "SELECT COUNT(*) FROM file_performer WHERE file_curation_id = ?",
+            (file_curation_id,),
+        ).fetchone()[0]
+    except Exception:
+        n_perf = 1
+    if n_perf > 1:
+        log.info("seeding: skip multi-performer file_id=%s (%d performers)",
+                 file_curation_id, n_perf)
+        return 0
+
     frames = extract_frames(video_path, duration)
     if not frames:
         log.info("seeding: no frames extracted file_id=%s", file_curation_id)
