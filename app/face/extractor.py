@@ -131,29 +131,101 @@ def _probe_video_codec(video_path: str) -> str | None:
     return None
 
 
-def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
-    """Extract frames from 8 windows spread across the full video duration.
+# V1 sampling: prefer content-driven keyframes over fixed time windows.
+MAX_FRAMES_PER_VIDEO = int(os.environ.get("FACE_MAX_FRAMES", "200"))
+MIN_IFRAMES_FOR_USE = 8  # below this, fall back to window sampling
 
-    Each window is 30 seconds long (10 frames, one every 3s).  Eight windows
-    at evenly spaced positions (5%–92%) give dense temporal coverage —
-    80 frames total, ~54s over Gigabit NFS for a 2 GB 1080p HEVC file.
+
+def _extract_iframes(video_path: str, duration_sec: float,
+                     codec: str | None) -> list[tuple[float, np.ndarray]]:
+    """Decode only keyframes (I-frames) in a single ffmpeg pass.
+
+    I-frames are the encoder's content-anchored, motion-blur-free frames — one
+    every few seconds — so this gives sharper, content-driven coverage than
+    fixed time offsets, at a fraction of the decode cost (inter-frames are never
+    reconstructed). Software decode with ``-skip_frame nokey`` is used: it
+    reliably honors the keyframe skip and is cheap precisely because it decodes
+    so few frames. If more than MAX_FRAMES_PER_VIDEO keyframes exist they are
+    evenly subsampled. Returns [] on any failure so the caller can fall back.
+    """
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vt_iframes_"))
+    try:
+        cmd = [
+            FFMPEG_BIN, "-nostdin", "-loglevel", "error",
+            "-skip_frame", "nokey", "-threads", "2",
+            "-i", video_path,
+            "-vsync", "vfr",
+            "-vf", "scale='min(1280,iw)':-2",
+            "-q:v", "3", "-y",
+            str(tmp_dir / "if_%05d.jpg"),
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT_SEC * 2, check=False)
+        except subprocess.TimeoutExpired:
+            log.warning("_extract_iframes: timeout path=%s", video_path)
+            return []
+        except FileNotFoundError:
+            log.error("_extract_iframes: ffmpeg not found")
+            return []
+
+        files = sorted(tmp_dir.glob("if_*.jpg"))
+        if not files:
+            return []
+        # Even subsample if we got more keyframes than the budget.
+        if len(files) > MAX_FRAMES_PER_VIDEO:
+            idx = np.linspace(0, len(files) - 1, MAX_FRAMES_PER_VIDEO).round().astype(int)
+            files = [files[i] for i in sorted(set(idx.tolist()))]
+        n = len(files)
+        out: list[tuple[float, np.ndarray]] = []
+        for i, fp in enumerate(files):
+            img = cv2.imread(str(fp), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            # Approximate timestamp (metadata only); exact PTS not needed.
+            t = (i / max(1, n - 1)) * duration_sec if duration_sec > 0 else float(i)
+            out.append((t, img))
+        return out
+    except Exception:
+        log.exception("_extract_iframes: unexpected failure path=%s", video_path)
+        return []
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def extract_frames(video_path: str, duration_sec: float) -> list[tuple[float, np.ndarray]]:
+    """Sample frames for face recognition.
+
+    V1: prefer keyframe (I-frame) extraction — one cheap ffmpeg pass yielding
+    sharp, content-driven frames. Falls back to the legacy fixed-window sampler
+    if the video yields too few keyframes (e.g. very short clips or odd encodes)
+    or if keyframe extraction fails. Returns list of (timestamp_sec, BGR image).
+    """
+    if not Path(video_path).exists():
+        log.warning("extract_frames: video missing path=%s", video_path)
+        return []
+    codec = _probe_video_codec(video_path)
+    iframes = _extract_iframes(video_path, duration_sec, codec)
+    if len(iframes) >= MIN_IFRAMES_FOR_USE:
+        log.debug("extract_frames: %d keyframes path=%s", len(iframes), video_path)
+        return iframes
+    log.debug("extract_frames: only %d keyframes — window fallback path=%s",
+              len(iframes), video_path)
+    return _extract_frames_windows(video_path, duration_sec, codec)
+
+
+def _extract_frames_windows(video_path: str, duration_sec: float,
+                            codec: str | None) -> list[tuple[float, np.ndarray]]:
+    """Legacy fixed-window sampler (fallback). 20 windows × 10 frames.
 
     Uses CUVID hardware decode when the codec is supported; falls back to
     software decode (-threads 2) per window on failure.
-
-    Returns list of (timestamp_sec, BGR image). Empty list on any error.
     """
     windows = _sample_windows(duration_sec)
     if not windows:
         return []
 
-    if not Path(video_path).exists():
-        log.warning("extract_frames: video missing path=%s", video_path)
-        return []
-
-    codec = _probe_video_codec(video_path)
     cuvid_decoder = _CUVID_MAP.get(codec or "")
-    log.debug("extract_frames: codec=%s cuvid=%s windows=%d path=%s",
+    log.debug("_extract_frames_windows: codec=%s cuvid=%s windows=%d path=%s",
               codec, cuvid_decoder, len(windows), video_path)
 
     all_frames: list[tuple[float, np.ndarray]] = []
