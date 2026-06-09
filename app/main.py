@@ -43,6 +43,23 @@ APP_VERSION = os.getenv('APP_VERSION') or (_ver_file.read_text().strip() if _ver
 last_backup_at: str | None = None
 last_prune_at:  str | None = None
 
+
+def _newest_backup_at() -> str | None:
+    """Formatted mtime of the newest DB backup on disk, or None if there are none.
+
+    Derived fresh from the files so the GUI shows the real last backup even when
+    the cached ``last_backup_at`` global wasn't populated at startup."""
+    try:
+        if not BACKUP_DIR.exists():
+            return None
+        backups = sorted(BACKUP_DIR.glob('transcoder_*.db'))
+        if not backups:
+            return None
+        mtime = backups[-1].stat().st_mtime
+        return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return None
+
 # Face-recognition thumbnails are served from /data/face_thumbs at /static/faces.
 # The directory must exist before StaticFiles is mounted, otherwise the mount
 # raises RuntimeError at startup.
@@ -876,6 +893,10 @@ async def dashboard(request: Request):
         {**mount_stats.get(name, {'done': 0, 'failed': 0, 'src_bytes': 0, 'dest_bytes': 0}), 'name': name}
         for name in transcoder.get_mounts()
     ]
+    # Derive last-backup time at render from the actual files — robust against
+    # the cached global never getting set at startup (showed "No backup yet"
+    # despite backups existing on disk).
+    last_backup = last_backup_at or _newest_backup_at()
     return templates.TemplateResponse(request, 'index.html',
         headers={"Cache-Control": "no-store"},
         context={
@@ -888,7 +909,7 @@ async def dashboard(request: Request):
             'cq':                 transcoder.CQ,
             'preset':             transcoder.PRESET,
             'dry_run':            transcoder.DRY_RUN,
-            'last_backup':        last_backup_at,
+            'last_backup':        last_backup,
             'version':            APP_VERSION,
             'workers_count':      transcoder.WORKERS + transcoder.VAAPI_WORKERS,
             'nvenc_workers':      transcoder.WORKERS,
