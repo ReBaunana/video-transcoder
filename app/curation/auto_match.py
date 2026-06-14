@@ -49,9 +49,23 @@ STOPWORDS: frozenset[str] = frozenset({
     'interracial', 'pov', 'fetish', 'busty', 'naughty', 'dirty', 'nubile',
     'first', 'time', 'beach', 'pool', 'office', 'kitchen', 'bathroom',
     'public', 'private',
+    'girls', 'oiled', 'streaker', 'league', 'babysitter', 'babysitters',
+    'scissors', 'panties', 'bra', 'dick', 'dong', 'kong', 'orgy', 'slumber',
+    'cuckold', 'closeup', 'mutual', 'bukkake', 'deepthroat', 'swallowed',
+    'bus', 'came', 'taking', 'gloryhole', 'gloryholes', 'com', 'blacked',
+    'tushy', 'vixen', 'deeper', 'nubiles', 'mylf', 'stepsister', 'stepdaughter',
+    'stepmom', 'stepbro', 'stepson', 'stepsis',
+    'onlyfans', 'fansly', 'brazzers', 'realitykings', 'teamskeet', 'manyvids',
+    'pornhub', 'xvideos', 'xhamster', 'stripchat', 'chaturbate', 'bangbros',
+    'naughtyamerica', 'mofos',
 })
 _NAME_PARTICLES: frozenset[str] = frozenset({
     'de', 'di', 'da', 'le', 'la', 'du', 'el', 'al', 'st', 'mc', 'van', 'von',
+})
+# camelCase studio/site compounds that survive token-stopword filtering -> reject on substring.
+_SITE_SUBSTRINGS: frozenset[str] = frozenset({
+    'dogfart', 'cuckoldsessions', 'blacksonblondes', 'boldlygirls', 'wowgirls',
+    'thevenus', 'cumlouder', 'nikitarzz', 'thefanvan',
 })
 
 
@@ -151,6 +165,9 @@ def extract_new_performer_name(path: str) -> str | None:
 
     candidate = ' '.join(name_tokens)
     if not (4 <= len(candidate) <= 40):
+        return None
+    low = candidate.lower()
+    if any(sub in low for sub in _SITE_SUBSTRINGS):
         return None
     return candidate.title()
 
