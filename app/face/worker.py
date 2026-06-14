@@ -236,7 +236,9 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
     try:
         cur.execute(
             """
-            SELECT fc.id
+            SELECT fc.id, fc.path,
+                   EXISTS (SELECT 1 FROM file_ocr_result o
+                            WHERE o.file_curation_id = fc.id) AS has_ocr
               FROM file_curation fc
              WHERE fc.status NOT IN ('skipped', 'renamed')
                AND NOT EXISTS (
@@ -255,7 +257,19 @@ def enqueue_all_unknown(conn: sqlite3.Connection) -> int:
                )
             """
         )
-        ids = [int(r[0]) for r in cur.fetchall()]
+        # Couple OCR before face-rec: a generic-named file must get a
+        # watermark-OCR pass first (it can identify the channel deterministically,
+        # e.g. a male performer's site, without face matching the partners). Only
+        # once OCR has recorded a result do we let face matching touch it.
+        # Non-generic files (real names in the filename) are unaffected.
+        import os as _os
+        from app.curation.watermark import looks_generic
+        ids = []
+        for r in cur.fetchall():
+            fid, path, has_ocr = int(r[0]), r[1] or "", int(r[2] or 0)
+            if not has_ocr and looks_generic(_os.path.basename(path)):
+                continue
+            ids.append(fid)
     except Exception:
         log.exception("enqueue_all_unknown: select failed")
         return 0
