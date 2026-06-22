@@ -23,6 +23,7 @@ PERFORMER_DEFAULT_MOUNT: str = 'ddMovie'    # home mount for new performers
 WORKERS            = max(1, int(os.getenv('FFMPEG_WORKERS', '2')))    # NVENC workers
 VAAPI_WORKERS      = int(os.getenv('VAAPI_WORKERS', '0'))             # Intel VAAPI workers
 FACE_WORKERS: int  = 3                                                # Face recognition workers
+FACE_ENABLED: bool = True                                             # Master on/off for face recognition (workers + enqueues)
 BACKUP_INTERVAL_H  = int(os.getenv('BACKUP_INTERVAL_H', '24'))  # 0 = disabled
 BACKUP_KEEP        = int(os.getenv('BACKUP_KEEP', '7'))
 PRUNE_INTERVAL_H   = max(1, int(os.getenv('PRUNE_INTERVAL_H', '24')))
@@ -62,7 +63,7 @@ _killed_slots: set[int] = set()
 # ── Settings persistence ──────────────────────────────────────────────────────
 
 def load_settings():
-    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, FACE_WORKERS, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS, PERFORMER_DEFAULT_MOUNT
+    global CQ, PRESET, DRY_RUN, WORKERS, VAAPI_WORKERS, FACE_WORKERS, FACE_ENABLED, BACKUP_INTERVAL_H, BACKUP_KEEP, SCHEDULE_HOUR, RETRANSCODE_ORIGINALS, DISABLED_MOUNTS, PERFORMER_DEFAULT_MOUNT
     try:
         data = json.loads(SETTINGS_PATH.read_text())
         cq = int(data.get('cq', CQ))
@@ -84,6 +85,7 @@ def load_settings():
         WORKERS           = max(1, min(int(data.get('workers', WORKERS)), 8))
         VAAPI_WORKERS     = max(0, min(int(data.get('vaapi_workers', VAAPI_WORKERS)), 3))
         FACE_WORKERS      = max(1, min(int(data.get('face_workers', FACE_WORKERS)), 8))
+        FACE_ENABLED      = bool(data.get('face_enabled', FACE_ENABLED))
         BACKUP_INTERVAL_H = max(0, int(data.get('backup_interval_h', BACKUP_INTERVAL_H)))
         BACKUP_KEEP       = max(1, min(int(data.get('backup_keep', BACKUP_KEEP)), 30))
         if 'schedule_hour' in data:
@@ -107,6 +109,7 @@ def save_settings():
             'cq': CQ, 'preset': PRESET, 'dry_run': DRY_RUN,
             'workers': WORKERS, 'vaapi_workers': VAAPI_WORKERS,
             'face_workers': FACE_WORKERS,
+            'face_enabled': FACE_ENABLED,
             'backup_interval_h': BACKUP_INTERVAL_H,
             'backup_keep': BACKUP_KEEP, 'schedule_hour': SCHEDULE_HOUR,
             'retranscode_originals': RETRANSCODE_ORIGINALS,

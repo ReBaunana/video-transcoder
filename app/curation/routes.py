@@ -982,6 +982,44 @@ async def api_set_face_workers(request: Request) -> JSONResponse:
     return JSONResponse({'count': n})
 
 
+@router.get('/api/face-enabled')
+async def api_get_face_enabled() -> JSONResponse:
+    import app.transcoder as _t
+    return JSONResponse({'enabled': bool(_t.FACE_ENABLED)})
+
+
+@router.post('/api/face-enabled')
+async def api_set_face_enabled(request: Request) -> JSONResponse:
+    """Master on/off for face recognition. Persists to settings.json and
+    starts/stops the worker pool at runtime (no container restart needed).
+    The scheduler's face sweep also checks transcoder.FACE_ENABLED each tick."""
+    body = await request.json()
+    enabled = bool(body.get('enabled', True))
+    import app.transcoder as _t
+    _t.FACE_ENABLED = enabled
+    _t.save_settings()
+    try:
+        if enabled:
+            from app.face.model import is_face_rec_available
+            if is_face_rec_available():
+                import sqlite3
+                from app.database import DB_PATH
+                from app.face.worker import start_worker
+
+                def _conn_factory():
+                    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+                    conn.row_factory = sqlite3.Row
+                    return conn
+
+                start_worker(_conn_factory, n_workers=_t.FACE_WORKERS)
+        else:
+            from app.face.worker import stop_worker
+            stop_worker()
+    except Exception:
+        log.exception('face-enabled toggle: worker control failed')
+    return JSONResponse({'enabled': enabled})
+
+
 @router.post('/library/files/{file_id}/tpdb')
 async def library_file_tpdb(file_id: int, request: Request) -> JSONResponse:
     """Lookup a single file against ThePornDB and auto-apply if confident."""

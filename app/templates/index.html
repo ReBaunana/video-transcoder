@@ -1379,6 +1379,21 @@
       <span style="color:var(--text-muted)">3×</span>&nbsp; max sessions
     </div>
   </div>
+  <div class="workers-select has-tip">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6"/>
+    </svg>
+    <select id="faceEnabledSelect" onchange="setFaceEnabled(this.value)">
+      <option value="1">Face: An</option>
+      <option value="0">Face: Aus</option>
+    </select>
+    <div class="tip tip-below" style="left:auto;right:0;transform:none;">
+      <strong style="color:var(--text)">Gesichtserkennung</strong><br>
+      Master-Schalter fürs Face-Matching.<br><br>
+      <span style="color:var(--green)">An</span>&nbsp; Worker laufen, neue Files werden gematcht<br>
+      <span style="color:var(--text-muted)">Aus</span>&nbsp; keine Worker, keine Enqueues (GPU frei)
+    </div>
+  </div>
   <button class="btn {{ 'btn-running' if state.running else 'btn-run' }}" id="btnRun"
     {% if not state.running %}onclick="apiPost('/api/run')"{% endif %}>
     {% if state.running %}
@@ -2380,6 +2395,26 @@
       if (sel) sel.value = d.vaapi_workers;
     } catch (_) {}
   }
+
+  async function setFaceEnabled(v) {
+    try {
+      const r = await fetch('/api/face-enabled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: v === '1' }),
+      });
+      const d = await r.json();
+      const sel = document.getElementById('faceEnabledSelect');
+      if (sel) sel.value = d.enabled ? '1' : '0';
+    } catch (_) {}
+  }
+  (async function initFaceEnabled() {
+    try {
+      const d = await (await fetch('/api/face-enabled')).json();
+      const sel = document.getElementById('faceEnabledSelect');
+      if (sel) sel.value = d.enabled ? '1' : '0';
+    } catch (_) {}
+  })();
 
   async function setWorkers(n) {
     try {

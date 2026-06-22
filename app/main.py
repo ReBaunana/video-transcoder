@@ -131,7 +131,7 @@ async def startup():
     try:
         from app.face.worker import start_worker
         from app.face.model import is_face_rec_available
-        if is_face_rec_available():
+        if transcoder.FACE_ENABLED and is_face_rec_available():
             db_path = DB_PATH
 
             def _conn_factory():
@@ -600,7 +600,7 @@ def _start_scheduler():
                 ).start()
 
             # Face sweep: seed + match all eligible files every 60 min.
-            if (now_ts - last_face_enqueue_ts) >= 60 * 60:
+            if transcoder.FACE_ENABLED and (now_ts - last_face_enqueue_ts) >= 60 * 60:
                 last_face_enqueue_ts = now_ts
                 threading.Thread(
                     target=_run_face_enqueue,
